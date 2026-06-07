@@ -6,7 +6,7 @@ struct CountryCode: Identifiable, Equatable, Hashable {
     let flag: String
     let dialCode: String
 
-    static let turkey = CountryCode(id: "TR", name: "Turkey", flag: "🇹🇷", dialCode: "+90")
+    static let turkey = CountryCode(id: "TR", name: "Turkiye", flag: "🇹🇷", dialCode: "+90")
 
     static let all: [CountryCode] = [
         .turkey,
