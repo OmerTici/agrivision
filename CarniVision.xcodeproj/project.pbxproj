@@ -31,8 +31,8 @@
 		A10000000000000000000026 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* CameraView.swift */; };
 		A10000000000000000000028 /* MuzzleDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* MuzzleDetector.mlpackage */; };
 		A10000000000000000000029 /* MuzzleDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* MuzzleDetectorService.swift */; };
-		A1000000000000000000002A /* CowDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001B /* CowDetector.mlpackage */; };
-		A1000000000000000000002B /* CowDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* CowDetectorService.swift */; };
+		A1000000000000000000002C /* CowFaceDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* CowFaceDetector.mlpackage */; };
+		A1000000000000000000002D /* CowFaceDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* CowFaceDetectorService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,8 +62,8 @@
 		B10000000000000000000017 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
 		B10000000000000000000019 /* MuzzleDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Models/MuzzleDetector.mlpackage"; sourceTree = "<group>"; };
 		B1000000000000000000001A /* MuzzleDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuzzleDetectorService.swift; sourceTree = "<group>"; };
-		B1000000000000000000001B /* CowDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Models/CowDetector.mlpackage"; sourceTree = "<group>"; };
-		B1000000000000000000001C /* CowDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CowDetectorService.swift; sourceTree = "<group>"; };
+		B1000000000000000000001D /* CowFaceDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Models/CowFaceDetector.mlpackage"; sourceTree = "<group>"; };
+		B1000000000000000000001E /* CowFaceDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CowFaceDetectorService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,7 +121,7 @@
 				B10000000000000000000016 /* MainPlaceholders.swift */,
 				B10000000000000000000017 /* CameraView.swift */,
 				B1000000000000000000001A /* MuzzleDetectorService.swift */,
-				B1000000000000000000001C /* CowDetectorService.swift */,
+				B1000000000000000000001E /* CowFaceDetectorService.swift */,
 			);
 			path = Main;
 			sourceTree = "<group>";
@@ -149,7 +149,7 @@
 			children = (
 				B1000000000000000000000B /* farm_background.mp4 */,
 				B10000000000000000000019 /* MuzzleDetector.mlpackage */,
-				B1000000000000000000001B /* CowDetector.mlpackage */,
+				B1000000000000000000001D /* CowFaceDetector.mlpackage */,
 				C10000000000000000000009 /* Fonts */,
 			);
 			path = Resources;
@@ -275,8 +275,8 @@
 				A10000000000000000000026 /* CameraView.swift in Sources */,
 				A10000000000000000000028 /* MuzzleDetector.mlpackage in Sources */,
 				A10000000000000000000029 /* MuzzleDetectorService.swift in Sources */,
-				A1000000000000000000002A /* CowDetector.mlpackage in Sources */,
-				A1000000000000000000002B /* CowDetectorService.swift in Sources */,
+				A1000000000000000000002C /* CowFaceDetector.mlpackage in Sources */,
+				A1000000000000000000002D /* CowFaceDetectorService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -60,17 +60,15 @@ final class CameraModel: NSObject, ObservableObject {
     @Published var captureMode: CaptureMode = .automatic
     @Published var lastPhoto: UIImage?
 
-    /// True while a qualifying muzzle is currently visible in the live preview.
-    @Published var muzzleVisible = false
-    /// True when a cow passes the live gate (automatic: required before muzzle).
-    @Published var cowVisible = false
-    /// True in manual mode when capture is allowed (cow or muzzle seen in preview).
+    /// True when a stable cattle face enables capture UI (green brackets / countdown).
+    @Published var faceVisible = false
+    /// True in manual mode when a stable face enables the shutter.
     @Published var canManualCapture = false
     /// Set once a photo is captured and a muzzle crop is produced.
     @Published var croppedMuzzle: UIImage?
     /// Drives the on-screen success message.
     @Published var captureSucceeded = false
-    /// Shown when capture/analysis fails (no cow, no muzzle crop, etc.).
+    /// Shown when capture/analysis fails (no muzzle crop, etc.).
     @Published var captureFailed = false
     @Published var failureMessage = ""
     /// True briefly while the final photo is being processed/cropped.
@@ -89,8 +87,8 @@ final class CameraModel: NSObject, ObservableObject {
     private var isConfigured = false
 
     // Detection / auto-capture state (touched only on videoQueue).
-    private let detector = MuzzleDetectorService()
-    private let cowDetector = CowDetectorService()
+    private let faceDetector = CowFaceDetectorService()
+    private let muzzleDetector = MuzzleDetectorService()
     private var isAnalyzing = false
     private var hasAutoCaptured = false
     /// Mirror of `captureMode` for use on `videoQueue` (avoid reading @Published off-main).
@@ -100,49 +98,29 @@ final class CameraModel: NSObject, ObservableObject {
 
     /// Smooths live detection flicker before updating UI / countdown.
     private var manualReadyGate = StableGate(holdToActivate: 0.30, graceWhenLost: 1.15)
-    private var autoCowGate = StableGate(holdToActivate: 0.30, graceWhenLost: 1.25)
-    private var autoMuzzleGate = StableGate(holdToActivate: 0.30, graceWhenLost: 1.15)
-    /// Last time each signal actually hit (for motion dropout tolerance).
-    private var lastCowHit: Date?
-    private var lastMuzzleHit: Date?
-    /// How long a started countdown survives missed frames (hand shake / cow step).
+    private var autoFaceGate = StableGate(holdToActivate: 0.30, graceWhenLost: 1.25)
+    /// Last time a qualifying face actually hit (for motion dropout tolerance).
+    private var lastFaceHit: Date?
+    /// How long a started countdown survives missed frames (hand shake / movement).
     private let countdownDropoutGrace: TimeInterval = 1.1
-    /// Extra cow absence allowed once the animal has already been found.
-    private let cowMotionGrace: TimeInterval = 1.3
+    /// Extra face absence allowed once the head has already been found.
+    private let faceMotionGrace: TimeInterval = 1.3
 
-    // MARK: Auto-capture gating (tune these)
+    // MARK: Face gating (tune these)
 
-    /// Minimum class confidence. Raise to reduce false triggers.
-    private let confidenceThreshold: Float = 0.45
-    /// Muzzle must fill at least this fraction of the frame in each dimension,
-    /// so only truly tiny background detections are ignored. Kept small so the
-    /// cow can be at a normal distance (muzzle need not fill the frame).
-    private let minBoxWidth: CGFloat = 0.10
-    private let minBoxHeight: CGFloat = 0.08
-    /// ...but not more than this, so a too-close shot that fills the whole
-    /// frame is rejected.
-    private let maxBoxWidth: CGFloat = 0.90
-    private let maxBoxHeight: CGFloat = 0.88
-    /// The whole box must sit inside the frame with this much margin, so a
-    /// muzzle pressed up against the lens (spilling past the edges) is rejected.
     private let edgeMargin: CGFloat = 0.02
-    /// Muzzle center must sit within this central region of the frame.
-    private let centerRange: ClosedRange<CGFloat> = 0.12...0.88
-    /// How long a qualifying muzzle must be held steady before capturing.
+    /// How long a qualifying face must be held steady before auto-capture.
     private let holdDuration: TimeInterval = 2.0
 
-    /// Minimum cow confidence for the live manual gate.
-    private let cowConfidenceThreshold: Float = 0.35
-    /// Loose live cow box bounds — distant cows stay small in the preview.
-    private let minCowBoxWidth: CGFloat = 0.07
-    private let minCowBoxHeight: CGFloat = 0.05
-    private let maxCowBoxWidth: CGFloat = 0.95
-    private let maxCowBoxHeight: CGFloat = 0.95
-    /// Wider center window than muzzle — the whole animal need not be dead-center.
-    private let cowCenterRange: ClosedRange<CGFloat> = 0.06...0.94
+    /// Minimum face confidence for the live preview gate.
+    private let faceConfidenceThreshold: Float = 0.35
+    private let minFaceBoxWidth: CGFloat = 0.10
+    private let minFaceBoxHeight: CGFloat = 0.10
+    private let maxFaceBoxWidth: CGFloat = 0.90
+    private let maxFaceBoxHeight: CGFloat = 0.85
+    private let faceCenterRange: ClosedRange<CGFloat> = 0.06...0.94
 
-    private static let manualIdleReadout = "Point at a cow or muzzle…"
-    private static let automaticCowReadout = "Looking for a cow…"
+    private static let idleReadout = "Point at the cow's head…"
 
     var showsResultOverlay: Bool { captureSucceeded || captureFailed }
 
@@ -182,11 +160,10 @@ final class CameraModel: NSObject, ObservableObject {
             self.captureFailed = false
             self.failureMessage = ""
             self.lastPhoto = nil
-            self.muzzleVisible = false
-            self.cowVisible = false
+            self.faceVisible = false
             self.canManualCapture = false
             self.countdown = nil
-            self.debugReadout = self.captureMode == .automatic ? Self.automaticCowReadout : Self.manualIdleReadout
+            self.debugReadout = Self.idleReadout
         }
         resetLiveDetectionState()
     }
@@ -204,12 +181,11 @@ final class CameraModel: NSObject, ObservableObject {
             self.captureFailed = false
             self.failureMessage = ""
             self.lastPhoto = nil
-            self.muzzleVisible = false
-            self.cowVisible = false
+            self.faceVisible = false
             self.canManualCapture = false
             self.countdown = nil
             self.isProcessing = false
-            self.debugReadout = mode == .automatic ? Self.automaticCowReadout : Self.manualIdleReadout
+            self.debugReadout = Self.idleReadout
         }
         videoQueue.async { [weak self] in
             self?.isAutomaticMode = mode == .automatic
@@ -222,11 +198,9 @@ final class CameraModel: NSObject, ObservableObject {
         videoQueue.async { [weak self] in
             self?.qualifyingSince = nil
             self?.hasAutoCaptured = false
-            self?.lastCowHit = nil
-            self?.lastMuzzleHit = nil
+            self?.lastFaceHit = nil
             self?.manualReadyGate.reset()
-            self?.autoCowGate.reset()
-            self?.autoMuzzleGate.reset()
+            self?.autoFaceGate.reset()
         }
     }
 
@@ -302,7 +276,7 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
-    /// Runs detection on the full-resolution photo and crops the muzzle.
+    /// Runs muzzle detection on the captured still and crops to the detected muzzle box.
     private func processCapturedPhoto(_ image: UIImage?) {
         videoQueue.async { [weak self] in
             guard let self else { return }
@@ -312,10 +286,10 @@ final class CameraModel: NSObject, ObservableObject {
                 return
             }
 
-            let detections = self.detector.detections(in: cgImage, orientation: .up)
+            let detections = self.muzzleDetector.detections(in: cgImage, orientation: .up)
             let best = detections.max(by: { $0.confidence < $1.confidence })
             guard let best,
-                  let crop = self.detector.cropMuzzle(from: cgImage, boundingBox: best.boundingBox)
+                  let crop = self.muzzleDetector.cropMuzzle(from: cgImage, boundingBox: best.boundingBox)
             else {
                 self.finishFailure("Muzzle could not be detected or cropped. Try again.")
                 return
@@ -323,7 +297,7 @@ final class CameraModel: NSObject, ObservableObject {
 
             let box = best.boundingBox
             let readout = String(
-                format: "Photo: conf %.2f · size %.0f%%×%.0f%%",
+                format: "Photo muzzle conf %.2f · size %.0f%%×%.0f%%",
                 best.confidence,
                 box.width * 100,
                 box.height * 100
@@ -379,95 +353,55 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     private func processAutomaticFrame(_ pixelBuffer: CVPixelBuffer) {
         let now = Date()
 
-        let cowDetections = cowDetector.detections(in: pixelBuffer, orientation: .up)
-        let cowBest = cowDetections.max(by: { $0.confidence < $1.confidence })
-        let cowOk = cowBest.map(qualifiesCowLive) ?? false
-        if cowOk { lastCowHit = now }
+        let faceDetections = faceDetector.detections(in: pixelBuffer, orientation: .up)
+        let faceBest = faceDetections.max(by: { $0.confidence < $1.confidence })
+        let faceOk = faceBest.map(qualifiesFaceLive) ?? false
+        if faceOk { lastFaceHit = now }
 
-        let cowStable = autoCowGate.update(hit: cowOk, now: now)
-        let cowPresent = cowStable
-            || (lastCowHit.map { now.timeIntervalSince($0) <= cowMotionGrace } ?? false)
+        let faceStable = autoFaceGate.update(hit: faceOk, now: now)
 
-        if !cowPresent {
-            lastCowHit = nil
-            lastMuzzleHit = nil
-            autoMuzzleGate.reset()
-            qualifyingSince = nil
-
-            let readout: String
-            if let cowBest, cowOk {
-                readout = String(format: "Cow conf %.2f · settling…", cowBest.confidence)
-            } else if let cowBest {
-                readout = String(
-                    format: "Cow conf %.2f · %@",
-                    cowBest.confidence,
-                    "ignored"
-                )
-            } else {
-                readout = Self.automaticCowReadout
-            }
-
-            DispatchQueue.main.async { [weak self] in
-                self?.cowVisible = false
-                self?.muzzleVisible = false
-                self?.debugReadout = readout
-                self?.countdown = nil
-            }
-            return
-        }
-
-        let detections = detector.detections(in: pixelBuffer, orientation: .up)
-        let best = detections.max(by: { $0.confidence < $1.confidence })
-        let muzzleQualifies = best.map { qualifies($0, forLivePreview: true) } ?? false
-        if muzzleQualifies { lastMuzzleHit = now }
-
-        let muzzleStable = autoMuzzleGate.update(hit: muzzleQualifies, now: now)
-        let muzzlePresent = muzzleStable
-            || (lastMuzzleHit.map { now.timeIntervalSince($0) <= countdownDropoutGrace } ?? false)
-
-        if muzzleStable, qualifyingSince == nil {
+        if faceStable, qualifyingSince == nil {
             qualifyingSince = now
         }
 
         if qualifyingSince != nil {
-            let recentMuzzle = lastMuzzleHit.map { now.timeIntervalSince($0) <= countdownDropoutGrace } ?? false
-            if !recentMuzzle {
+            let recentFace = lastFaceHit.map { now.timeIntervalSince($0) <= countdownDropoutGrace } ?? false
+            if !recentFace {
                 qualifyingSince = nil
-                lastMuzzleHit = nil
+                lastFaceHit = nil
             }
         }
 
         let counting = qualifyingSince != nil
         let remaining = qualifyingSince.map { holdDuration - now.timeIntervalSince($0) } ?? holdDuration
         let countdownValue: Int? = counting ? max(1, Int(ceil(remaining))) : nil
-        let showGreen = muzzlePresent && (muzzleStable || counting)
+        let showGreen = faceStable || counting
 
         let readout: String
-        if counting, let best {
-            let box = best.boundingBox
+        if counting, let faceBest {
+            let box = faceBest.boundingBox
             readout = String(
-                format: "Cow ok · muzzle conf %.2f · size %.0f%%×%.0f%% · holding…",
-                best.confidence,
+                format: "Face conf %.2f · size %.0f%%×%.0f%% · holding…",
+                faceBest.confidence,
                 box.width * 100,
                 box.height * 100
             )
-        } else if muzzleStable, let best {
-            let box = best.boundingBox
+        } else if faceStable, let faceBest {
+            let box = faceBest.boundingBox
             readout = String(
-                format: "Cow ok · muzzle conf %.2f · size %.0f%%×%.0f%% · ready",
-                best.confidence,
+                format: "Face conf %.2f · size %.0f%%×%.0f%% · ready",
+                faceBest.confidence,
                 box.width * 100,
                 box.height * 100
             )
-        } else if muzzleQualifies, let best {
-            readout = String(format: "Cow ok · muzzle conf %.2f · settling…", best.confidence)
+        } else if faceOk, let faceBest {
+            readout = String(format: "Face conf %.2f · settling…", faceBest.confidence)
         } else {
-            readout = "Cow detected — align the muzzle."
+            readout = Self.idleReadout
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.cowVisible = true
-            self?.muzzleVisible = showGreen
+            self?.faceVisible = showGreen
             self?.debugReadout = readout
             self?.countdown = countdownValue
         }
@@ -484,37 +418,20 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     private func processManualFrame(_ pixelBuffer: CVPixelBuffer) {
         let now = Date()
 
-        let cowDetections = cowDetector.detections(in: pixelBuffer, orientation: .up)
-        let cowBest = cowDetections.max(by: { $0.confidence < $1.confidence })
-        let cowOk = cowBest.map(qualifiesCowLive) ?? false
-
-        let muzzleDetections = detector.detections(in: pixelBuffer, orientation: .up)
-        let muzzleBest = muzzleDetections.max(by: { $0.confidence < $1.confidence })
-        let muzzleOk = muzzleBest.map { qualifies($0, forLivePreview: true) } ?? false
-
-        let ready = manualReadyGate.update(hit: cowOk || muzzleOk, now: now)
+        let faceDetections = faceDetector.detections(in: pixelBuffer, orientation: .up)
+        let faceBest = faceDetections.max(by: { $0.confidence < $1.confidence })
+        let faceOk = faceBest.map(qualifiesFaceLive) ?? false
+        let ready = manualReadyGate.update(hit: faceOk, now: now)
 
         let readout: String
-        if ready {
-            if muzzleOk {
-                readout = String(format: "Muzzle conf %.2f · ready", muzzleBest?.confidence ?? 0)
-            } else if let cowBest {
-                readout = String(format: "Cow conf %.2f · ready", cowBest.confidence)
-            } else {
-                readout = "Ready"
-            }
-        } else if muzzleOk {
-            readout = String(format: "Muzzle conf %.2f · settling…", muzzleBest?.confidence ?? 0)
-        } else if cowOk, let cowBest {
-            readout = String(format: "Cow conf %.2f · settling…", cowBest.confidence)
-        } else if let cowBest {
-            readout = String(
-                format: "Cow conf %.2f · %@",
-                cowBest.confidence,
-                "ignored"
-            )
+        if ready, let faceBest {
+            readout = String(format: "Face conf %.2f · ready", faceBest.confidence)
+        } else if faceOk, let faceBest {
+            readout = String(format: "Face conf %.2f · settling…", faceBest.confidence)
+        } else if let faceBest {
+            readout = String(format: "Face conf %.2f · ignored", faceBest.confidence)
         } else {
-            readout = Self.manualIdleReadout
+            readout = Self.idleReadout
         }
 
         DispatchQueue.main.async { [weak self] in
@@ -523,42 +440,20 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
     }
 
-    /// A detection only counts if it is confident, large, and roughly centered.
-    /// Live preview uses slightly looser thresholds to tolerate shake and movement.
-    private func qualifies(_ detection: MuzzleDetection, forLivePreview: Bool = false) -> Bool {
-        let confFloor = forLivePreview ? max(confidenceThreshold - 0.07, 0.35) : confidenceThreshold
-        guard detection.confidence >= confFloor else { return false }
+    private func qualifiesFaceLive(_ detection: CowFaceDetection) -> Bool {
+        guard detection.confidence >= faceConfidenceThreshold else { return false }
 
         let box = detection.boundingBox
-        let minW = forLivePreview ? max(minBoxWidth - 0.02, 0.06) : minBoxWidth
-        let minH = forLivePreview ? max(minBoxHeight - 0.02, 0.05) : minBoxHeight
-        let center = forLivePreview ? 0.08...0.92 : centerRange
+        guard box.width >= minFaceBoxWidth, box.height >= minFaceBoxHeight else { return false }
+        guard box.width <= maxFaceBoxWidth, box.height <= maxFaceBoxHeight else { return false }
 
-        guard box.width >= minW, box.height >= minH else { return false }
-        guard box.width <= maxBoxWidth, box.height <= maxBoxHeight else { return false }
-
-        guard box.minX >= edgeMargin, box.minY >= edgeMargin,
-              box.maxX <= 1 - edgeMargin, box.maxY <= 1 - edgeMargin else { return false }
-
-        return center.contains(box.midX) && center.contains(box.midY)
-    }
-
-    /// Live manual gate for COCO cow — loose enough for distant animals.
-    private func qualifiesCowLive(_ detection: CowDetection) -> Bool {
-        guard detection.confidence >= cowConfidenceThreshold else { return false }
-
-        let box = detection.boundingBox
-        guard box.width >= minCowBoxWidth, box.height >= minCowBoxHeight else { return false }
-        guard box.width <= maxCowBoxWidth, box.height <= maxCowBoxHeight else { return false }
-
-        // Reject wide flat desk shapes (keyboard / trackpad misreads).
         let aspect = box.width / max(box.height, 0.001)
-        if aspect > 2.6, box.width > 0.40 { return false }
+        if aspect > 2.4, box.width > 0.45 { return false }
 
         guard box.minX >= edgeMargin, box.minY >= edgeMargin,
               box.maxX <= 1 - edgeMargin, box.maxY <= 1 - edgeMargin else { return false }
 
-        return cowCenterRange.contains(box.midX) && cowCenterRange.contains(box.midY)
+        return faceCenterRange.contains(box.midX) && faceCenterRange.contains(box.midY)
     }
 }
 
@@ -692,7 +587,7 @@ struct CameraScreen: View {
     private var scanBracketColor: Color {
         switch model.captureMode {
         case .automatic:
-            return model.muzzleVisible ? CarniColors.successGreen : .white
+            return model.faceVisible ? CarniColors.successGreen : .white
         case .manual:
             return model.canManualCapture ? CarniColors.successGreen : .white
         }
@@ -701,17 +596,13 @@ struct CameraScreen: View {
     private var scanHint: String {
         switch model.captureMode {
         case .automatic:
-            if model.muzzleVisible {
-                return "Muzzle detected — hold steady…"
-            }
-            if model.cowVisible {
-                return "Cow detected — align the muzzle."
-            }
-            return "Point at a cow first."
+            return model.faceVisible
+                ? "Head detected — hold steady…"
+                : "Point at the cow's head."
         case .manual:
             return model.canManualCapture
-                ? "Ready — tap to capture."
-                : "Point at a cow or muzzle."
+                ? "Head ready — tap to capture."
+                : "Point at the cow's head."
         }
     }
 
