@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ForgotPasswordView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var lang = LanguageManager.shared
     @State private var resetMethod: AuthMethod = .email
     @State private var email = ""
     @State private var phoneNumber = ""
@@ -29,8 +30,8 @@ struct ForgotPasswordView: View {
                     }
 
                     AuthHeader(
-                        title: "Forgot Password",
-                        subtitle: "Enter your email or phone number and we'll send you a reset link."
+                        title: lang.t("auth.forgotTitle"),
+                        subtitle: lang.t("auth.forgotSubtitle")
                     )
 
                     AuthCard {
@@ -38,28 +39,28 @@ struct ForgotPasswordView: View {
 
                         if resetMethod == .email {
                             AuthTextField(
-                                title: "Email",
-                                placeholder: "you@example.com",
+                                title: lang.t("auth.email"),
+                                placeholder: lang.t("auth.emailPh"),
                                 text: $email,
                                 keyboardType: .emailAddress,
                                 textContentType: .emailAddress
                             )
                         } else {
                             PhoneNumberField(
-                                title: "Phone number",
+                                title: lang.t("auth.phone"),
                                 selectedCountry: $selectedCountry,
                                 phoneNumber: $phoneNumber
                             )
                         }
 
-                        PrimaryAuthButton(title: "Send Reset Link") {
+                        PrimaryAuthButton(title: lang.t("auth.sendReset")) {
                             handleResetRequest()
                         }
                     }
 
                     AuthFooterPrompt(
-                        prompt: "Remember your password?",
-                        actionTitle: "Back to login"
+                        prompt: lang.t("auth.remember"),
+                        actionTitle: lang.t("auth.backToLogin")
                     ) {
                         dismiss()
                     }

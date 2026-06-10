@@ -5,6 +5,7 @@ struct SignUpForm: View {
     var onSwitchToSignIn: () -> Void
     var onAuthenticated: () -> Void = {}
 
+    @ObservedObject private var lang = LanguageManager.shared
     @State private var fullName = ""
     @State private var email = ""
     @State private var phoneNumber = ""
@@ -24,13 +25,13 @@ struct SignUpForm: View {
         VStack(spacing: 12) {
             AuthBackButton(systemName: "chevron.left", action: onBack)
 
-            AuthHeader(title: "Create Account", compact: true)
+            AuthHeader(title: lang.t("auth.create"), compact: true)
 
             AuthCard(compact: true, lightStyle: true) {
                 VStack(spacing: 8) {
                     AuthTextField(
-                        title: "Full name",
-                        placeholder: "Your name",
+                        title: lang.t("auth.fullName"),
+                        placeholder: lang.t("auth.fullNamePh"),
                         text: $fullName,
                         textContentType: .name,
                         compact: true,
@@ -38,8 +39,8 @@ struct SignUpForm: View {
                     )
 
                     AuthTextField(
-                        title: "Email",
-                        placeholder: "you@example.com",
+                        title: lang.t("auth.email"),
+                        placeholder: lang.t("auth.emailPh"),
                         text: $email,
                         keyboardType: .emailAddress,
                         textContentType: .emailAddress,
@@ -48,7 +49,7 @@ struct SignUpForm: View {
                     )
 
                     PhoneNumberField(
-                        title: "Phone number",
+                        title: lang.t("auth.phone"),
                         selectedCountry: $selectedCountry,
                         phoneNumber: $phoneNumber,
                         compact: true,
@@ -56,23 +57,23 @@ struct SignUpForm: View {
                     )
 
                     AuthSecureField(
-                        title: "Password",
-                        placeholder: "Create a password",
+                        title: lang.t("auth.password"),
+                        placeholder: lang.t("auth.createPw"),
                         text: $password,
                         compact: true,
                         lightStyle: true
                     )
 
                     AuthSecureField(
-                        title: "Confirm password",
-                        placeholder: "Repeat your password",
+                        title: lang.t("auth.confirmPw"),
+                        placeholder: lang.t("auth.repeatPw"),
                         text: $confirmPassword,
                         compact: true,
                         lightStyle: true
                     )
                 }
 
-                PrimaryAuthButton(title: "Sign up", compact: true, disabled: !canSubmit) {
+                PrimaryAuthButton(title: lang.t("auth.signupAction"), compact: true, disabled: !canSubmit) {
                     handleSignUp()
                 }
             }
@@ -80,8 +81,8 @@ struct SignUpForm: View {
             Spacer(minLength: 0)
 
             AuthFooterPrompt(
-                prompt: "Already have an account?",
-                actionTitle: "Log in",
+                prompt: lang.t("auth.haveAccount"),
+                actionTitle: lang.t("auth.login"),
                 compact: true
             ) {
                 onSwitchToSignIn()

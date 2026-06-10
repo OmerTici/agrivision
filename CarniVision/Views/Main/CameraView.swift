@@ -54,6 +54,13 @@ final class CameraModel: NSObject, ObservableObject {
     enum CaptureMode: String, CaseIterable {
         case automatic = "Automatic"
         case manual = "Manual"
+
+        var key: String {
+            switch self {
+            case .automatic: return "camera.mode.automatic"
+            case .manual: return "camera.mode.manual"
+            }
+        }
     }
 
     @Published var status: Status = .idle
@@ -70,6 +77,7 @@ final class CameraModel: NSObject, ObservableObject {
     @Published var captureSucceeded = false
     /// Shown when capture/analysis fails (no muzzle crop, etc.).
     @Published var captureFailed = false
+    /// Localization key for the failure reason; translated by the view.
     @Published var failureMessage = ""
     /// True briefly while the final photo is being processed/cropped.
     @Published var isProcessing = false
@@ -113,7 +121,12 @@ final class CameraModel: NSObject, ObservableObject {
     private let holdDuration: TimeInterval = 2.0
 
     /// Minimum face confidence for the live preview gate.
-    private let faceConfidenceThreshold: Float = 0.35
+    /// Real cow faces score ~0.79+ with the negatives-trained model; the hardest
+    /// sheep/goat false positives reach ~0.62, so 0.65 separates them.
+    private let faceConfidenceThreshold: Float = 0.65
+    /// Floor for cropping a muzzle from the captured still — a box below this is
+    /// noise, and failing the scan beats enrolling a junk crop.
+    private let muzzleConfidenceThreshold: Float = 0.25
     private let minFaceBoxWidth: CGFloat = 0.10
     private let minFaceBoxHeight: CGFloat = 0.10
     private let maxFaceBoxWidth: CGFloat = 0.90
@@ -282,16 +295,17 @@ final class CameraModel: NSObject, ObservableObject {
             guard let self else { return }
 
             guard let cgImage = image?.normalizedCGImage() else {
-                self.finishFailure("Could not read the photo. Try again.")
+                self.finishFailure("camera.fail.read")
                 return
             }
 
             let detections = self.muzzleDetector.detections(in: cgImage, orientation: .up)
             let best = detections.max(by: { $0.confidence < $1.confidence })
             guard let best,
+                  best.confidence >= self.muzzleConfidenceThreshold,
                   let crop = self.muzzleDetector.cropMuzzle(from: cgImage, boundingBox: best.boundingBox)
             else {
-                self.finishFailure("Muzzle could not be detected or cropped. Try again.")
+                self.finishFailure("camera.fail.crop")
                 return
             }
 
@@ -317,13 +331,13 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
-    private func finishFailure(_ message: String) {
+    private func finishFailure(_ messageKey: String) {
         DispatchQueue.main.async {
             self.croppedMuzzle = nil
-            self.debugReadout = message
+            self.debugReadout = messageKey
             self.isProcessing = false
             self.captureSucceeded = false
-            self.failureMessage = message
+            self.failureMessage = messageKey
             self.captureFailed = true
             self.canManualCapture = false
         }
@@ -498,6 +512,7 @@ struct CameraScreen: View {
     var onClose: () -> Void = {}
 
     @StateObject private var model = CameraModel()
+    @ObservedObject private var lang = LanguageManager.shared
     @State private var flash = false
     @State private var showHelp = false
     @State private var showResult = false
@@ -539,7 +554,7 @@ struct CameraScreen: View {
                 if model.captureMode == .automatic || model.captureMode == .manual || model.isProcessing {
                     VStack {
                         Spacer()
-                        Text(model.isProcessing ? "Analyzing photo…" : model.debugReadout)
+                        Text(model.isProcessing ? lang.t("camera.analyzing") : lang.t(model.debugReadout))
                             .font(.system(size: 12, weight: .medium, design: .monospaced))
                             .foregroundStyle(.white)
                             .padding(.vertical, 6)
@@ -596,13 +611,9 @@ struct CameraScreen: View {
     private var scanHint: String {
         switch model.captureMode {
         case .automatic:
-            return model.faceVisible
-                ? "Head detected — hold steady…"
-                : "Point at the cow's head."
+            return lang.t(model.faceVisible ? "camera.hint.hold" : "camera.hint.point")
         case .manual:
-            return model.canManualCapture
-                ? "Head ready — tap to capture."
-                : "Point at the cow's head."
+            return lang.t(model.canManualCapture ? "camera.hint.tap" : "camera.hint.point")
         }
     }
 
@@ -612,7 +623,7 @@ struct CameraScreen: View {
                 Button {
                     showHelp = true
                 } label: {
-                    Text("Help?")
+                    Text(lang.t("camera.help"))
                         .font(CarniFont.semibold(15))
                         .foregroundStyle(CarniColors.white)
                         .padding(.vertical, 9)
@@ -674,7 +685,7 @@ struct CameraScreen: View {
                 Button {
                     model.setCaptureMode(mode)
                 } label: {
-                    Text(mode.rawValue)
+                    Text(lang.t(mode.key))
                         .font(CarniFont.semibold(14))
                         .foregroundStyle(
                             model.captureMode == mode ? CarniColors.purpleDark : CarniColors.white
@@ -715,13 +726,11 @@ struct CameraScreen: View {
                     .font(.system(size: 54))
                     .foregroundStyle(model.captureSucceeded ? CarniColors.successGreen : .red)
 
-                Text(model.captureSucceeded ? "Muzzle captured!" : "Scan failed")
+                Text(lang.t(model.captureSucceeded ? "camera.success.title" : "camera.failed.title"))
                     .font(CarniFont.bold(22))
                     .foregroundStyle(CarniColors.purpleDark)
 
-                Text(model.captureSucceeded
-                     ? "The muzzle was detected and cropped successfully."
-                     : model.failureMessage)
+                Text(lang.t(model.captureSucceeded ? "camera.success.msg" : model.failureMessage))
                     .font(CarniFont.regular(15))
                     .foregroundStyle(CarniColors.purpleDark.opacity(0.85))
                     .multilineTextAlignment(.center)
@@ -748,7 +757,7 @@ struct CameraScreen: View {
                         Button {
                             showResult = true
                         } label: {
-                            Text("View result")
+                            Text(lang.t("camera.viewResult"))
                                 .font(CarniFont.semibold(17))
                                 .foregroundStyle(CarniColors.white)
                                 .frame(maxWidth: .infinity)
@@ -762,7 +771,7 @@ struct CameraScreen: View {
                     Button {
                         model.scanAgain()
                     } label: {
-                        Text("Scan again")
+                        Text(lang.t("camera.scanAgain"))
                             .font(CarniFont.semibold(16))
                             .foregroundStyle(CarniColors.purple)
                             .frame(maxWidth: .infinity)
@@ -803,11 +812,11 @@ struct CameraScreen: View {
                 .font(.system(size: 48, weight: .semibold))
                 .foregroundStyle(CarniColors.white)
 
-            Text("Camera access needed")
+            Text(lang.t("camera.denied.title"))
                 .font(CarniFont.bold(22))
                 .foregroundStyle(CarniColors.white)
 
-            Text("Allow camera access in Settings to scan animals.")
+            Text(lang.t("camera.denied.msg"))
                 .font(CarniFont.regular(15))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(CarniColors.white.opacity(0.8))
@@ -818,7 +827,7 @@ struct CameraScreen: View {
                     UIApplication.shared.open(url)
                 }
             } label: {
-                Text("Open Settings")
+                Text(lang.t("camera.openSettings"))
                     .font(CarniFont.semibold(16))
                     .foregroundStyle(CarniColors.purple)
                     .padding(.vertical, 12)
@@ -930,6 +939,7 @@ private struct ScanCornerBrackets: Shape {
 /// Bottom sheet that explains how to line the cow's muzzle up with the guide.
 struct MuzzleHelpSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var lang = LanguageManager.shared
 
     var body: some View {
         VStack(spacing: 22) {
@@ -938,7 +948,7 @@ struct MuzzleHelpSheet: View {
                 .frame(width: 40, height: 5)
                 .padding(.top, 10)
 
-            Text("Scanning guide")
+            Text(lang.t("camera.guide.title"))
                 .font(CarniFont.bold(22))
                 .foregroundStyle(CarniColors.purpleDark)
 
@@ -946,13 +956,13 @@ struct MuzzleHelpSheet: View {
             // "ExampleCorrect" / "ExampleWrong" with real images later).
             HStack(spacing: 14) {
                 ExampleImageCard(
-                    caption: "Correct",
+                    caption: lang.t("camera.guide.correct"),
                     tint: .green,
                     icon: "checkmark.circle.fill",
                     imageName: "ExampleCorrect"
                 )
                 ExampleImageCard(
-                    caption: "Wrong",
+                    caption: lang.t("camera.guide.wrong"),
                     tint: .red,
                     icon: "xmark.circle.fill",
                     imageName: "ExampleWrong"
@@ -960,7 +970,7 @@ struct MuzzleHelpSheet: View {
             }
             .padding(.horizontal, 20)
 
-            Text("Place the animal inside the white square on your screen. It does not need to be perfect — as long as it stays within the frame, the scan should work.")
+            Text(lang.t("camera.guide.body"))
                 .font(CarniFont.regular(15))
                 .foregroundStyle(CarniColors.purpleDark.opacity(0.9))
                 .multilineTextAlignment(.center)
@@ -968,9 +978,9 @@ struct MuzzleHelpSheet: View {
                 .padding(.horizontal, 28)
 
             VStack(alignment: .leading, spacing: 14) {
-                HelpRow(icon: "viewfinder", text: "Move closer or farther until the subject fits comfortably inside the square.")
-                HelpRow(icon: "sun.max", text: "Find good lighting and hold your phone steady before taking the photo.")
-                HelpRow(icon: "hand.raised", text: "Keep the subject fully inside the frame — avoid cutting it off at the edges.")
+                HelpRow(icon: "viewfinder", text: lang.t("camera.guide.tip1"))
+                HelpRow(icon: "sun.max", text: lang.t("camera.guide.tip2"))
+                HelpRow(icon: "hand.raised", text: lang.t("camera.guide.tip3"))
             }
             .padding(.horizontal, 24)
 
@@ -979,7 +989,7 @@ struct MuzzleHelpSheet: View {
             Button {
                 dismiss()
             } label: {
-                Text("I understand")
+                Text(lang.t("camera.understand"))
                     .font(CarniFont.semibold(17))
                     .foregroundStyle(CarniColors.white)
                     .frame(maxWidth: .infinity)
@@ -1068,6 +1078,7 @@ struct MuzzleResultSheet: View {
     let full: UIImage?
 
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var lang = LanguageManager.shared
 
     var body: some View {
         VStack(spacing: 18) {
@@ -1076,21 +1087,21 @@ struct MuzzleResultSheet: View {
                 .frame(width: 40, height: 5)
                 .padding(.top, 10)
 
-            Text("Detection result")
+            Text(lang.t("camera.result.title"))
                 .font(CarniFont.bold(22))
                 .foregroundStyle(CarniColors.purpleDark)
 
             ScrollView {
                 VStack(spacing: 22) {
                     resultBlock(
-                        title: "Cropped muzzle",
+                        title: lang.t("camera.result.cropped"),
                         image: cropped,
-                        emptyText: "No muzzle crop was produced."
+                        emptyText: lang.t("camera.result.noCrop")
                     )
                     resultBlock(
-                        title: "Full photo",
+                        title: lang.t("camera.result.full"),
                         image: full,
-                        emptyText: "No photo available."
+                        emptyText: lang.t("camera.result.noPhoto")
                     )
                 }
                 .padding(.horizontal, 20)
@@ -1100,7 +1111,7 @@ struct MuzzleResultSheet: View {
             Button {
                 dismiss()
             } label: {
-                Text("Done")
+                Text(lang.t("camera.done"))
                     .font(CarniFont.semibold(17))
                     .foregroundStyle(CarniColors.white)
                     .frame(maxWidth: .infinity)

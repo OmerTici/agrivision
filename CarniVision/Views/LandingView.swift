@@ -9,6 +9,7 @@ struct LandingView: View {
 
     var onAuthenticated: () -> Void = {}
 
+    @ObservedObject private var lang = LanguageManager.shared
     @State private var screen: Screen = .landing
 
     private var transitionAnimation: Animation {
@@ -53,6 +54,13 @@ struct LandingView: View {
 
     private var landingContent: some View {
         VStack {
+            HStack {
+                Spacer()
+                languageToggle
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+
             Spacer()
 
             VStack(spacing: 8) {
@@ -61,24 +69,48 @@ struct LandingView: View {
                     .foregroundStyle(CarniColors.white)
                     .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
 
-                Text("Choose how you'd like to continue")
+                Text(lang.t("auth.landing.subtitle"))
                     .font(CarniFont.regular(15))
                     .foregroundStyle(CarniColors.white.opacity(0.88))
             }
             .padding(.bottom, 28)
 
             VStack(spacing: 12) {
-                LandingActionButton(title: "Sign In") {
+                LandingActionButton(title: lang.t("auth.signin")) {
                     goTo(.signIn)
                 }
 
-                LandingActionButton(title: "Sign Up") {
+                LandingActionButton(title: lang.t("auth.signup")) {
                     goTo(.signUp)
                 }
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 48)
         }
+    }
+
+    private var languageToggle: some View {
+        HStack(spacing: 4) {
+            ForEach(AppLanguage.allCases) { option in
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        lang.language = option
+                    }
+                } label: {
+                    Text(option.rawValue.uppercased())
+                        .font(CarniFont.semibold(13))
+                        .foregroundStyle(lang.language == option ? CarniColors.purple : CarniColors.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule().fill(lang.language == option ? CarniColors.white : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.black.opacity(0.25)))
     }
 }
 

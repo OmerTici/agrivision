@@ -65,9 +65,11 @@ final class MuzzleDetectorService {
         let request = VNCoreMLRequest(model: visionModel) { request, _ in
             guard let results = request.results as? [VNRecognizedObjectObservation] else { return }
             output = results.map { obs in
+                // Single-class YOLO pipelines report labels.first.confidence as a
+                // constant 1.0; the real detection score is obs.confidence.
                 MuzzleDetection(
                     boundingBox: obs.boundingBox,
-                    confidence: obs.labels.first?.confidence ?? obs.confidence
+                    confidence: obs.confidence
                 )
             }
         }

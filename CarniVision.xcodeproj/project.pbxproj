@@ -33,6 +33,12 @@
 		A10000000000000000000029 /* MuzzleDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* MuzzleDetectorService.swift */; };
 		A1000000000000000000002C /* CowFaceDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* CowFaceDetector.mlpackage */; };
 		A1000000000000000000002D /* CowFaceDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* CowFaceDetectorService.swift */; };
+		A1000000000000000000002E /* HerdData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* HerdData.swift */; };
+		A1000000000000000000002F /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* HomeView.swift */; };
+		A10000000000000000000030 /* AnimalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* AnimalsView.swift */; };
+		A10000000000000000000031 /* AddAnimalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* AddAnimalView.swift */; };
+		A10000000000000000000032 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* SettingsView.swift */; };
+		A10000000000000000000033 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* Localization.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +70,12 @@
 		B1000000000000000000001A /* MuzzleDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuzzleDetectorService.swift; sourceTree = "<group>"; };
 		B1000000000000000000001D /* CowFaceDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Models/CowFaceDetector.mlpackage"; sourceTree = "<group>"; };
 		B1000000000000000000001E /* CowFaceDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CowFaceDetectorService.swift; sourceTree = "<group>"; };
+		B1000000000000000000001F /* HerdData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdData.swift; sourceTree = "<group>"; };
+		B10000000000000000000020 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		B10000000000000000000021 /* AnimalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimalsView.swift; sourceTree = "<group>"; };
+		B10000000000000000000022 /* AddAnimalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAnimalView.swift; sourceTree = "<group>"; };
+		B10000000000000000000023 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B10000000000000000000024 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -119,6 +131,10 @@
 				B10000000000000000000014 /* MainTabView.swift */,
 				B10000000000000000000015 /* CarniTabBar.swift */,
 				B10000000000000000000016 /* MainPlaceholders.swift */,
+				B10000000000000000000020 /* HomeView.swift */,
+				B10000000000000000000021 /* AnimalsView.swift */,
+				B10000000000000000000022 /* AddAnimalView.swift */,
+				B10000000000000000000023 /* SettingsView.swift */,
 				B10000000000000000000017 /* CameraView.swift */,
 				B1000000000000000000001A /* MuzzleDetectorService.swift */,
 				B1000000000000000000001E /* CowFaceDetectorService.swift */,
@@ -130,6 +146,8 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000005 /* CountryCode.swift */,
+				B1000000000000000000001F /* HerdData.swift */,
+				B10000000000000000000024 /* Localization.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -277,6 +295,12 @@
 				A10000000000000000000029 /* MuzzleDetectorService.swift in Sources */,
 				A1000000000000000000002C /* CowFaceDetector.mlpackage in Sources */,
 				A1000000000000000000002D /* CowFaceDetectorService.swift in Sources */,
+				A1000000000000000000002E /* HerdData.swift in Sources */,
+				A1000000000000000000002F /* HomeView.swift in Sources */,
+				A10000000000000000000030 /* AnimalsView.swift in Sources */,
+				A10000000000000000000031 /* AddAnimalView.swift in Sources */,
+				A10000000000000000000032 /* SettingsView.swift in Sources */,
+				A10000000000000000000033 /* Localization.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

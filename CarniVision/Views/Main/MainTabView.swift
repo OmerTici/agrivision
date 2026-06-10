@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selected: AppTab = .home
+    @StateObject private var store = HerdStore()
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -10,6 +11,7 @@ struct MainTabView: View {
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .environmentObject(store)
 
             if selected != .camera {
                 CarniTabBar(selected: $selected)
@@ -21,7 +23,7 @@ struct MainTabView: View {
     private var content: some View {
         switch selected {
         case .home:
-            HomeScreen()
+            HomeScreen(onSeeAllAnimals: { selected = .animals })
         case .animals:
             AnimalsScreen()
         case .camera:

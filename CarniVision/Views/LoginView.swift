@@ -5,6 +5,7 @@ struct SignInForm: View {
     var onSwitchToSignUp: () -> Void
     var onAuthenticated: () -> Void = {}
 
+    @ObservedObject private var lang = LanguageManager.shared
     @State private var loginMethod: AuthMethod = .email
     @State private var email = ""
     @State private var phoneNumber = ""
@@ -19,7 +20,7 @@ struct SignInForm: View {
 
                 AuthHeader(
                     title: "Carni_vision",
-                    subtitle: "Welcome back. Sign in to continue."
+                    subtitle: lang.t("auth.login.subtitle")
                 )
 
                 AuthCard(lightStyle: true) {
@@ -28,8 +29,8 @@ struct SignInForm: View {
                     VStack(spacing: 16) {
                         if loginMethod == .email {
                             AuthTextField(
-                                title: "Email",
-                                placeholder: "you@example.com",
+                                title: lang.t("auth.email"),
+                                placeholder: lang.t("auth.emailPh"),
                                 text: $email,
                                 keyboardType: .emailAddress,
                                 textContentType: .emailAddress,
@@ -37,7 +38,7 @@ struct SignInForm: View {
                             )
                         } else {
                             PhoneNumberField(
-                                title: "Phone number",
+                                title: lang.t("auth.phone"),
                                 selectedCountry: $selectedCountry,
                                 phoneNumber: $phoneNumber,
                                 lightStyle: true
@@ -45,8 +46,8 @@ struct SignInForm: View {
                         }
 
                         AuthSecureField(
-                            title: "Password",
-                            placeholder: "Enter your password",
+                            title: lang.t("auth.password"),
+                            placeholder: lang.t("auth.passwordPh"),
                             text: $password,
                             lightStyle: true
                         )
@@ -54,19 +55,19 @@ struct SignInForm: View {
 
                     HStack {
                         Spacer()
-                        AuthTextButton(title: "Forgot Password?", lightStyle: true) {
+                        AuthTextButton(title: lang.t("auth.forgot"), lightStyle: true) {
                             showForgotPassword = true
                         }
                     }
 
-                    PrimaryAuthButton(title: "Log in") {
+                    PrimaryAuthButton(title: lang.t("auth.login")) {
                         handleLogin()
                     }
                 }
 
                 AuthFooterPrompt(
-                    prompt: "Don't have an account?",
-                    actionTitle: "Sign up"
+                    prompt: lang.t("auth.noAccount"),
+                    actionTitle: lang.t("auth.signupAction")
                 ) {
                     onSwitchToSignUp()
                 }

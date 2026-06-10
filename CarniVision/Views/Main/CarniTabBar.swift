@@ -59,6 +59,7 @@ struct RaisedCenterTabBarShape: Shape {
 
 struct CarniTabBar: View {
     @Binding var selected: AppTab
+    @ObservedObject private var lang = LanguageManager.shared
 
     private let bumpHeight: CGFloat = 16
 
@@ -67,14 +68,14 @@ struct CarniTabBar: View {
             TabBarItem(
                 icon: "house",
                 selectedIcon: "house.fill",
-                label: "home",
+                label: lang.t("tab.home"),
                 tab: .home,
                 selected: $selected
             )
             TabBarItem(
                 icon: "pawprint",
                 selectedIcon: "pawprint.fill",
-                label: "animals",
+                label: lang.t("tab.animals"),
                 tab: .animals,
                 selected: $selected
             )
@@ -86,14 +87,14 @@ struct CarniTabBar: View {
             TabBarItem(
                 icon: "plus",
                 selectedIcon: "plus",
-                label: "add",
+                label: lang.t("tab.add"),
                 tab: .addAnimal,
                 selected: $selected
             )
             TabBarItem(
                 icon: "gearshape",
                 selectedIcon: "gearshape.fill",
-                label: "settings",
+                label: lang.t("tab.settings"),
                 tab: .settings,
                 selected: $selected
             )

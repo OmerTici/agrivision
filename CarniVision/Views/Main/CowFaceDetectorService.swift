@@ -8,8 +8,8 @@ struct CowFaceDetection {
     let confidence: Float
 }
 
-/// Loads the cow-face CoreML model and returns `cow_face` detections only.
-/// `sheep_face` predictions are discarded in the app gate.
+/// Loads the cow-face CoreML model and returns detections whose top class
+/// is the cow face; detections of any other class are discarded.
 final class CowFaceDetectorService {
     private var visionModel: VNCoreMLModel?
 
@@ -60,9 +60,11 @@ final class CowFaceDetectorService {
             guard let results = request.results as? [VNRecognizedObjectObservation] else { return }
             output = results.compactMap { obs in
                 guard Self.isCowFace(obs) else { return nil }
+                // Single-class YOLO pipelines report labels.first.confidence as a
+                // constant 1.0; the real detection score is obs.confidence.
                 return CowFaceDetection(
                     boundingBox: obs.boundingBox,
-                    confidence: obs.labels.first?.confidence ?? obs.confidence
+                    confidence: obs.confidence
                 )
             }
         }
@@ -77,15 +79,14 @@ final class CowFaceDetectorService {
     }
 
     private static func isCowFace(_ observation: VNRecognizedObjectObservation) -> Bool {
-        guard !observation.labels.isEmpty else { return true }
-        let labels = observation.labels.map {
-            $0.identifier.lowercased().replacingOccurrences(of: "-", with: "_")
+        // No labels at all only happens with single-class models; accept those.
+        guard let top = observation.labels.max(by: { $0.confidence < $1.confidence }) else {
+            return true
         }
-        if labels.contains(where: { $0.contains("sheep") }) { return false }
-        if labels.contains(where: { $0.contains("cow") && $0.contains("face") }) { return true }
-        if labels.contains("cow_face") { return true }
-        if labels.contains("0") { return true }
-        return true
+        let identifier = top.identifier.lowercased().replacingOccurrences(of: "-", with: "_")
+        // Accept only the cow-face class ("0" covers unnamed single-class exports);
+        // any other top class — sheep, dog, whatever a future model adds — is rejected.
+        return identifier.contains("cow") || identifier == "0"
     }
 
     /// Crops the muzzle region from a still photo using the lower portion of a face box.

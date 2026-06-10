@@ -5,6 +5,13 @@ enum AuthMethod: String, CaseIterable, Identifiable {
     case phone = "Phone"
 
     var id: String { rawValue }
+
+    var key: String {
+        switch self {
+        case .email: return "auth.method.email"
+        case .phone: return "auth.method.phone"
+        }
+    }
 }
 
 struct AuthBackground<Content: View>: View {
@@ -49,6 +56,7 @@ struct AuthMethodPicker: View {
     @Binding var method: AuthMethod
     var compact: Bool = false
     var lightStyle: Bool = false
+    @ObservedObject private var lang = LanguageManager.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -56,7 +64,7 @@ struct AuthMethodPicker: View {
                 Button {
                     method = option
                 } label: {
-                    Text(option.rawValue)
+                    Text(lang.t(option.key))
                         .font(CarniFont.semibold(compact ? 13 : 15))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, compact ? 8 : 10)
