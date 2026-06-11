@@ -16,11 +16,11 @@ pgvector matching in Supabase. Spec:
    key, **transaction pooler** DSN on port 6543).
 
 ## Local dev
-    python3 -m venv .venv && .venv/bin/pip install torch==2.12.0 torchvision==0.27.0
+    python3 -m venv .venv && .venv/bin/pip install torch==2.12.0 torchvision==0.27.0 --index-url https://download.pytorch.org/whl/cpu
     .venv/bin/pip install -r requirements-dev.txt
     .venv/bin/pytest -m "not slow and not integration"    # fast suite
     .venv/bin/pytest -m slow                               # real model (~206 MB download)
-    INTEGRATION=1 TEST_OWNER_UID=<uid> .venv/bin/pytest tests/test_match.py
+    INTEGRATION=1 TEST_OWNER_UID=<uid> DATABASE_URL=postgresql://user:pass@host:6543/postgres .venv/bin/pytest tests/test_match.py
     .venv/bin/uvicorn app.main:app --reload
 
 ## Deploy (Cloud Run — GCP project: agritrack, service separate from agritrack-app)
