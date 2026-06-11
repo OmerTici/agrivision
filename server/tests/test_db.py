@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from app.db import MATCH_SQL, vector_literal
 
@@ -15,6 +16,13 @@ def test_vector_literal_roundtrip_precision():
     vec /= np.linalg.norm(vec)
     parts = np.array([float(p) for p in vector_literal(vec)[1:-1].split(",")], dtype=np.float32)
     assert np.allclose(parts, vec, atol=1e-7)
+
+
+def test_vector_literal_rejects_non_finite():
+    with pytest.raises(ValueError):
+        vector_literal(np.array([0.5, np.nan], dtype=np.float32))
+    with pytest.raises(ValueError):
+        vector_literal(np.array([np.inf, 0.5], dtype=np.float32))
 
 
 def test_match_sql_is_owner_scoped_exact_scan():

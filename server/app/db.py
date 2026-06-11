@@ -7,6 +7,8 @@ codec registration needed, which also keeps the pooler happy.
 
 Matching is an exact scan by design (no vector index): pgvector caps HNSW at
 2000 dims (MiewID is 2152) and exact scan is ~0.2 ms at 1k vectors anyway."""
+import asyncio
+
 import asyncpg
 import numpy as np
 
@@ -14,21 +16,25 @@ from .config import get_settings
 from .decision import Candidate
 
 _pool: asyncpg.Pool | None = None
+_pool_lock = asyncio.Lock()
 
 
 def vector_literal(vec: np.ndarray) -> str:
+    if not np.isfinite(vec).all():
+        raise ValueError("vector contains non-finite values")
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
 
 
 async def get_pool() -> asyncpg.Pool:
     global _pool
-    if _pool is None:
-        _pool = await asyncpg.create_pool(
-            get_settings().database_url,
-            min_size=0,
-            max_size=4,
-            statement_cache_size=0,
-        )
+    async with _pool_lock:
+        if _pool is None:
+            _pool = await asyncpg.create_pool(
+                get_settings().database_url,
+                min_size=0,
+                max_size=4,
+                statement_cache_size=0,
+            )
     return _pool
 
 
