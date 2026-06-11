@@ -13,8 +13,8 @@ def verify_jwt(token: str, secret: str) -> str:
         payload = jwt.decode(
             token, secret, algorithms=["HS256"], audience="authenticated"
         )
-    except jwt.InvalidTokenError as exc:
-        raise HTTPException(status_code=401, detail=f"invalid token: {exc}")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="invalid token")
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="token missing sub claim")

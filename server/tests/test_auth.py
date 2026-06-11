@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from app.auth import verify_jwt
 
-SECRET = "test-secret"
+SECRET = "test-secret-0123456789abcdef0123456789abcdef"
 
 
 def make_token(secret=SECRET, sub="user-123", aud="authenticated", exp_delta=3600):
@@ -23,7 +23,7 @@ def test_valid_token_returns_uid():
 
 def test_wrong_secret_rejected():
     with pytest.raises(HTTPException) as e:
-        verify_jwt(make_token(secret="other"), SECRET)
+        verify_jwt(make_token(secret="other-secret-0123456789abcdef0123456789"), SECRET)
     assert e.value.status_code == 401
 
 
