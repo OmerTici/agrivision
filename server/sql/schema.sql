@@ -31,7 +31,9 @@ create index if not exists animals_owner_idx on animals (owner);
 alter table animals enable row level security;
 alter table embeddings enable row level security;
 
+drop policy if exists "own animals" on animals;
 create policy "own animals" on animals
   for all using (owner = auth.uid()) with check (owner = auth.uid());
+drop policy if exists "own embeddings" on embeddings;
 create policy "own embeddings" on embeddings
   for all using (owner = auth.uid()) with check (owner = auth.uid());
