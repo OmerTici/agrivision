@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,8 @@ from .auth import current_uid
 from .config import get_settings
 from .decision import decide
 from .schemas import CandidateOut, EnrollResponse, HealthResponse, IdentifyResponse
+
+logger = logging.getLogger("carnivision.embedder")
 
 # Module-global model slot. Tests pre-populate it with a fake; production
 # leaves it None and the lifespan loads the real model once per container.
@@ -45,8 +48,9 @@ def _embed(images: list[Image.Image]):
         raise HTTPException(status_code=503, detail="model not loaded yet")
     try:
         return embedder.embed_batch(images)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"embedding failed: {exc}")
+    except Exception:
+        logger.exception("embedding failed")
+        raise HTTPException(status_code=500, detail="embedding failed")
 
 
 @app.get("/healthz", response_model=HealthResponse)
@@ -86,6 +90,9 @@ async def enroll(
     pil = _decode_jpegs(raw)
     vecs = _embed(pil)  # ONE batched forward pass for all enrollment photos
     paths = []
+    # On partial upload failure we return 502 and skip the DB insert; already-
+    # uploaded objects are left as storage orphans (DB stays the source of
+    # truth). Acceptable for MVP; a cleanup pass can reap them later.
     try:
         for data in raw:
             path = storage.object_path(uid, animal_id)
