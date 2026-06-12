@@ -79,11 +79,11 @@ server/
 ```
 
 **Model lifecycle:** loaded once at container startup (module-global), never per
-request. `/healthz` returns ready state and is used by the app to warm cold starts.
+request. `/health` returns ready state and is used by the app to warm cold starts.
 
 ### Endpoints
 
-- `GET /healthz` → `{status, model_loaded}`. Warmup ping.
+- `GET /health` → `{status, model_loaded}`. Warmup ping. (Named `/health`, not `/healthz` — Google's Frontend reserves `/healthz` on `*.run.app` domains and swallows requests before they reach the container.)
 - `POST /identify` — multipart: muzzle JPEG; header: `Authorization: Bearer <supabase_jwt>`.
   Flow: verify JWT → embed → pgvector query (RLS-scoped to user) → group by animal,
   max sim → apply decision rule → return
@@ -158,7 +158,7 @@ per-owner path prefixes.
   container startup) — this is what keeps cold starts at ~20–30 s instead of 60 s+
   and removes the HF-availability dependency at runtime.
 - Cloud Run: `--memory 4Gi --cpu 2 --min-instances 0 --cpu-boost` (decided
-  2026-06-11: scale-to-zero + app-driven `/healthz` warmup; CPU boost is free at
+  2026-06-11: scale-to-zero + app-driven `/health` warmup; CPU boost is free at
   idle and halves cold-start time). Option `--min-instances 1` (~$15–30/mo) can be
   flipped on during pilot weeks if cold starts annoy in practice.
 - **Postgres connections go through the Supavisor transaction-mode pooler (port
@@ -180,8 +180,8 @@ per-owner path prefixes.
 
 ## Error handling
 
-- **Cold start:** app shows "waking up recognizer", fires `/healthz` on launch, 90 s
-  timeout on first call.
+- **Cold start:** app shows "waking up recognizer", fires `/health` on launch, 90 s
+  timeout on first call. (Endpoint is `/health`, not `/healthz` — Google's Frontend on `*.run.app` reserves `/healthz` and returns its own 404 without forwarding to the container.)
 - **No/blurry muzzle:** on-device detector gates (confidence < 0.25 → reposition); never
   call the server without a valid crop.
 - **Low confidence/margin:** → unknown, never a confident wrong ID.

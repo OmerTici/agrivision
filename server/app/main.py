@@ -53,8 +53,9 @@ def _embed(images: list[Image.Image]):
         raise HTTPException(status_code=500, detail="embedding failed")
 
 
-@app.get("/healthz", response_model=HealthResponse)
-async def healthz():
+# NOT /healthz — Google Frontend reserves that path on *.run.app and swallows it.
+@app.get("/health", response_model=HealthResponse)
+async def health():
     return HealthResponse(
         status="ok" if state["embedder"] is not None else "loading",
         model_loaded=state["embedder"] is not None,

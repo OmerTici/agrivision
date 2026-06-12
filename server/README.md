@@ -5,7 +5,7 @@ pgvector matching in Supabase. Spec:
 `../docs/superpowers/specs/2026-06-11-carnivision-embedder-api-design.md`.
 
 ## Endpoints
-- `GET  /healthz` — `{status, model_loaded}`; the iOS app pings this on launch to warm cold starts.
+- `GET  /health` — `{status, model_loaded}`; the iOS app pings this on launch to warm cold starts.
 - `POST /identify` — multipart `image` (muzzle JPEG) + `Authorization: Bearer <supabase JWT>`.
 - `POST /enroll` — multipart `images[]` + form `animal_id` + JWT.
 

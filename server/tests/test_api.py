@@ -7,8 +7,8 @@ from tests.conftest import TEST_UID
 ANIMAL = "22222222-2222-2222-2222-222222222222"
 
 
-def test_healthz(client):
-    r = client.get("/healthz")
+def test_health(client):
+    r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok", "model_loaded": True}
 
