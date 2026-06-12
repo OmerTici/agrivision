@@ -33,10 +33,11 @@ struct AnimalsScreen: View {
             }
             guard matchesFilter else { return false }
             guard !searchText.isEmpty else { return true }
-            let query = searchText.lowercased()
-            return animal.name.lowercased().contains(query)
-                || animal.tag.lowercased().contains(query)
-                || animal.breed.lowercased().contains(query)
+            // localizedStandardContains: case/diacritic-insensitive and correct
+            // for Turkish dotted-I, unlike lowercased().contains.
+            return animal.name.localizedStandardContains(searchText)
+                || animal.tag.localizedStandardContains(searchText)
+                || animal.breed.localizedStandardContains(searchText)
         }
     }
 
