@@ -70,23 +70,23 @@ These are Xcode-GUI operations (the executor must perform them in Xcode; they ca
 **Files:**
 - Modify: `CarniVision.xcodeproj/project.pbxproj` (written by Xcode)
 
-- [ ] **Step 1: Open the project**
+- [x] **Step 1: Open the project**
 
 ```bash
 xed CarniVision.xcodeproj
 ```
 
-- [ ] **Step 2: Add the supabase-swift package, pinned**
+- [x] **Step 2: Add the supabase-swift package, pinned**
 
 In Xcode: **File ▸ Add Package Dependencies…** → enter `https://github.com/supabase/supabase-swift` → Dependency Rule: **Exact Version** `2.5.1` (pin; do not use "Up to Next Major"). Add. When prompted for products, check **only `Supabase`** and add it to the **CarniVision** app target.
 
 > If `2.5.1` is unavailable in your SPM cache, pick the newest available 2.x exact version and record it in the README setup note. The API used in this plan (`SupabaseClient(supabaseURL:supabaseKey:)`, `client.auth.signIn(email:password:)`, `client.auth.signUp(email:password:)`, `client.auth.signOut()`, `client.auth.session`, `auth.authStateChanges`, `client.from("animals").insert(...).select().single().execute()`) is stable across supabase-swift 2.x.
 
-- [ ] **Step 3: Add a unit-test target**
+- [x] **Step 3: Add a unit-test target**
 
 In Xcode: **File ▸ New ▸ Target… ▸ Unit Testing Bundle**. Product Name: **`CarniVisionTests`**. Team: `Z23895JP8U`. Target to be Tested: **CarniVision**. Finish. This creates the `CarniVisionTests` group/target and a default test file — delete the auto-generated `CarniVisionTests.swift` placeholder (we add our own test files in later tasks).
 
-- [ ] **Step 4: Verify the package and test target are registered**
+- [x] **Step 4: Verify the package and test target are registered**
 
 ```bash
 grep -c "XCRemoteSwiftPackageReference" CarniVision.xcodeproj/project.pbxproj
@@ -94,14 +94,14 @@ grep -nE "supabase-swift|productType = \"com.apple.product-type.bundle.unit-test
 ```
 Expected: the `XCRemoteSwiftPackageReference` count is `>= 1`; the second grep shows the supabase-swift repo URL and a `CarniVisionTests` unit-test target.
 
-- [ ] **Step 5: Confirm the schemes Xcode sees**
+- [x] **Step 5: Confirm the schemes Xcode sees**
 
 ```bash
 xcodebuild -list -project CarniVision.xcodeproj 2>&1 | sed -n '1,40p'
 ```
 Expected: under **Schemes**, `CarniVision` appears. (If `xcodebuild` errors with "requires Xcode", run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` first.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add CarniVision.xcodeproj
@@ -490,7 +490,7 @@ git commit -m "Add AuthService with stubbed-backend tests"
 **Files:**
 - Modify: `CarniVision/Models/Localization.swift`
 
-- [ ] **Step 1: Add EN keys**
+- [x] **Step 1: Add EN keys**
 
 In `CarniVision/Models/Localization.swift`, in the `.english` dictionary, replace this exact line:
 
@@ -508,7 +508,7 @@ with:
             "auth.mismatch": "Passwords do not match.",
 ```
 
-- [ ] **Step 2: Add TR keys**
+- [x] **Step 2: Add TR keys**
 
 In the `.turkish` dictionary, replace this exact line:
 
@@ -526,7 +526,7 @@ with:
             "auth.mismatch": "Şifreler eşleşmiyor.",
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CarniVision/Models/Localization.swift
@@ -543,7 +543,7 @@ git commit -m "Add auth flow localization strings"
 - Modify: `CarniVision/Views/LoginView.swift`
 - Modify: `CarniVision/Views/SignUpView.swift`
 
-- [ ] **Step 1: Inject AuthService at the app root**
+- [x] **Step 1: Inject AuthService at the app root**
 
 Replace the entire contents of `CarniVision/CarniVisionApp.swift`:
 
@@ -566,7 +566,7 @@ struct CarniVisionApp: App {
 
 > The shared `RecognitionService` is injected lower down (Task 11) so the camera view can receive it; the app-level `warmUp()` call is also added in Task 11 once the service type exists.
 
-- [ ] **Step 2: Gate RootView on the session**
+- [x] **Step 2: Gate RootView on the session**
 
 Replace the entire contents of `CarniVision/Views/RootView.swift`:
 
@@ -591,7 +591,7 @@ struct RootView: View {
 }
 ```
 
-- [ ] **Step 3: Drop the obsolete onAuthenticated closure from LandingView**
+- [x] **Step 3: Drop the obsolete onAuthenticated closure from LandingView**
 
 In `CarniVision/Views/LandingView.swift`, replace this exact block:
 
@@ -651,7 +651,7 @@ with:
             }
 ```
 
-- [ ] **Step 4: Real sign-in in LoginView**
+- [x] **Step 4: Real sign-in in LoginView**
 
 In `CarniVision/Views/LoginView.swift`, replace this exact block:
 
@@ -746,7 +746,7 @@ with:
 
 > Phone login is not wired in this sub-project (the embedder uses email/JWT auth). The phone picker stays in the UI but `handleLogin()` always uses the email field; leave a follow-up note. Successful sign-in flips `auth.identity`, which `RootView` observes — no closure callback needed.
 
-- [ ] **Step 5: Real sign-up in SignUpView**
+- [x] **Step 5: Real sign-up in SignUpView**
 
 In `CarniVision/Views/SignUpView.swift`, replace this exact block:
 
@@ -839,14 +839,14 @@ with:
 }
 ```
 
-- [ ] **Step 6: Build to confirm wiring compiles**
+- [x] **Step 6: Build to confirm wiring compiles**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add CarniVision/CarniVisionApp.swift CarniVision/Views/RootView.swift CarniVision/Views/LandingView.swift CarniVision/Views/LoginView.swift CarniVision/Views/SignUpView.swift

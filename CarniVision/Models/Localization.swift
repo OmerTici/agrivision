@@ -188,6 +188,13 @@ final class LanguageManager: ObservableObject {
             "camera.identify.offline": "Network unavailable. Try again.",
             "camera.identify.retry": "Try again",
 
+            // Recognition errors
+            "recognition.error.notAuthenticated": "Not signed in.",
+            "recognition.error.http": "Server error (%d).",
+            "recognition.error.network": "Network unavailable.",
+            "recognition.error.encoding": "Could not prepare the image.",
+            "recognition.error.decoding": "Unexpected server response.",
+
             // Auth
             "auth.landing.subtitle": "Choose how you'd like to continue",
             "auth.signin": "Sign In",
@@ -353,6 +360,13 @@ final class LanguageManager: ObservableObject {
             "camera.identify.waking": "Tanıyıcı uyandırılıyor…",
             "camera.identify.offline": "Ağ kullanılamıyor. Tekrar deneyin.",
             "camera.identify.retry": "Tekrar dene",
+
+            // Recognition errors
+            "recognition.error.notAuthenticated": "Oturum açılmamış.",
+            "recognition.error.http": "Sunucu hatası (%d).",
+            "recognition.error.network": "Ağ bağlantısı yok.",
+            "recognition.error.encoding": "Görüntü hazırlanamadı.",
+            "recognition.error.decoding": "Beklenmeyen sunucu yanıtı.",
 
             // Auth
             "auth.landing.subtitle": "Nasıl devam etmek istediğinizi seçin",

@@ -15,6 +15,15 @@ protocol AuthBackend {
     func signOut() async throws
     /// Returns a persisted session if the SDK restored one at launch.
     func restoreSession() async -> AuthIdentity?
+    /// Emits identity updates as the SDK's session changes (refresh / sign-in / sign-out).
+    /// `nil` means the user is now signed out. Default: an empty stream (no updates).
+    func identityUpdates() -> AsyncStream<AuthIdentity?>
+}
+
+extension AuthBackend {
+    func identityUpdates() -> AsyncStream<AuthIdentity?> {
+        AsyncStream { $0.finish() }
+    }
 }
 
 /// Production backend backed by the real SupabaseClient.
@@ -53,6 +62,28 @@ struct SupabaseAuthBackend: AuthBackend {
         guard let session = try? await client.auth.session else { return nil }
         return identity(from: session)
     }
+
+    /// Bridges supabase-swift's `authStateChanges` to identity updates. The SDK
+    /// refreshes the access token transparently and emits `.tokenRefreshed`, so
+    /// subscribing here keeps `AuthService.identity` from going stale.
+    func identityUpdates() -> AsyncStream<AuthIdentity?> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await (event, session) in client.auth.authStateChanges {
+                    switch event {
+                    case .signedIn, .tokenRefreshed:
+                        if let session { continuation.yield(identity(from: session)) }
+                    case .signedOut:
+                        continuation.yield(nil)
+                    default:
+                        break
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 }
 
 /// Owns auth state for the UI. `identity != nil` means the user is signed in.
@@ -66,15 +97,34 @@ final class AuthService: ObservableObject {
     var userID: String? { identity?.userID }
 
     private let backend: AuthBackend
+    /// Long-lived subscription to SDK auth-state changes; cancelled on deinit.
+    private var authStateTask: Task<Void, Never>?
 
     init(backend: AuthBackend = SupabaseAuthBackend()) {
         self.backend = backend
+    }
+
+    deinit {
+        authStateTask?.cancel()
     }
 
     /// Restore a persisted session at launch (call from the app entry point).
     func bootstrap() async {
         if let restored = await backend.restoreSession() {
             identity = restored
+        }
+        observeAuthState()
+    }
+
+    /// Keeps `identity` in sync with the SDK's session (token refresh, sign-in, sign-out)
+    /// so a stale snapshot can never linger after the access token rotates.
+    private func observeAuthState() {
+        guard authStateTask == nil else { return }
+        authStateTask = Task { [weak self] in
+            guard let updates = self?.backend.identityUpdates() else { return }
+            for await identity in updates {
+                self?.identity = identity
+            }
         }
     }
 

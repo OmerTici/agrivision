@@ -6,12 +6,13 @@ struct CarniVisionApp: App {
     @StateObject private var recognition: CloudRunRecognitionService
 
     init() {
-        // Build a recognition service whose token is read from the live session.
-        let authService = AuthService()
-        _auth = StateObject(wrappedValue: authService)
+        _auth = StateObject(wrappedValue: AuthService())
+        // Always read a guaranteed-fresh token straight from the SDK session.
+        // supabase-swift refreshes the access token transparently when it has expired,
+        // so this never goes stale the way a sign-in snapshot would.
         _recognition = StateObject(wrappedValue: CloudRunRecognitionService(
             baseURL: AppConfig.embedderBaseURL,
-            tokenProvider: { [weak authService] in authService?.accessToken }
+            tokenProvider: { try? await SupabaseClientProvider.shared.auth.session.accessToken }
         ))
     }
 

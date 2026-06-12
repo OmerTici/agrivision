@@ -8,13 +8,13 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
 
     private let baseURL: URL
     private let session: URLSession
-    /// Returns the current access token (from AuthService) at call time.
-    private let tokenProvider: () -> String?
+    /// Returns a guaranteed-fresh access token at call time (the SDK refreshes if needed).
+    private let tokenProvider: () async -> String?
 
     /// Cold-start budget for the first network call.
     private let coldStartTimeout: TimeInterval = 90
 
-    init(baseURL: URL, session: URLSession = .shared, tokenProvider: @escaping () -> String?) {
+    init(baseURL: URL, session: URLSession = .shared, tokenProvider: @escaping () async -> String?) {
         self.baseURL = baseURL
         self.session = session
         self.tokenProvider = tokenProvider
@@ -35,7 +35,7 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
     }
 
     func identify(jpegData: Data) async throws -> IdentifyResult {
-        guard let token = tokenProvider() else { throw RecognitionError.notAuthenticated }
+        guard let token = await tokenProvider() else { throw RecognitionError.notAuthenticated }
         var form = MultipartFormData()
         form.appendFile(name: "image", filename: "muzzle.jpg", mimeType: "image/jpeg", data: jpegData)
         let request = makeRequest(path: "identify", form: form, token: token)
@@ -43,7 +43,7 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
     }
 
     func enroll(animalID: String, muzzleJpegs: [Data], fullJpeg: Data?) async throws -> EnrollResult {
-        guard let token = tokenProvider() else { throw RecognitionError.notAuthenticated }
+        guard let token = await tokenProvider() else { throw RecognitionError.notAuthenticated }
         var form = MultipartFormData()
         form.appendField(name: "animal_id", value: animalID)
         for (index, jpeg) in muzzleJpegs.enumerated() {

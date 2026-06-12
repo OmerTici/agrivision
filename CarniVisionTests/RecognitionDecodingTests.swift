@@ -54,7 +54,7 @@ final class RecognitionDecodingTests: XCTestCase {
         return CloudRunRecognitionService(
             baseURL: URL(string: "https://embedder.example.com")!,
             session: session,
-            tokenProvider: { token }
+            tokenProvider: { token }  // async closure
         )
     }
 

@@ -461,7 +461,7 @@ final class CameraModel: NSObject, ObservableObject {
         let muzzleJpegs = collectedCrops.compactMap { ImageEncoding.muzzleJPEG($0) }
         let fullJpeg = lastPhoto.flatMap { ImageEncoding.fullBodyJPEG($0) }
         guard muzzleJpegs.count == collectedCrops.count, !muzzleJpegs.isEmpty else {
-            recognitionError = RecognitionError.encoding.localizedDescription
+            recognitionError = Self.localizedRecognitionMessage(for: RecognitionError.encoding)
             enrollPhase = .failed
             return
         }
@@ -471,8 +471,28 @@ final class CameraModel: NSObject, ObservableObject {
                                          fullJpeg: fullJpeg)
             enrollPhase = .done
         } catch {
-            recognitionError = error.localizedDescription
+            recognitionError = Self.localizedRecognitionMessage(for: error)
             enrollPhase = .failed
+        }
+    }
+
+    /// Maps a thrown recognition error to a localized, user-facing message at the
+    /// UI boundary so `RecognitionError` (Services layer) stays free of LanguageManager.
+    static func localizedRecognitionMessage(for error: Error) -> String {
+        let lang = LanguageManager.shared
+        switch error {
+        case RecognitionError.notAuthenticated:
+            return lang.t("recognition.error.notAuthenticated")
+        case let RecognitionError.http(status, _):
+            return lang.t("recognition.error.http", status)
+        case RecognitionError.transport:
+            return lang.t("recognition.error.network")
+        case RecognitionError.encoding:
+            return lang.t("recognition.error.encoding")
+        case RecognitionError.decoding:
+            return lang.t("recognition.error.decoding")
+        default:
+            return error.localizedDescription
         }
     }
 
@@ -486,7 +506,7 @@ final class CameraModel: NSObject, ObservableObject {
         do {
             identifyResult = try await service.identify(jpegData: jpeg)
         } catch {
-            recognitionError = error.localizedDescription
+            recognitionError = Self.localizedRecognitionMessage(for: error)
         }
     }
 
