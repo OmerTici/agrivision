@@ -3,10 +3,16 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5C01C9C32FDBCA3C000CA86C /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 5C01C9C22FDBCA3C000CA86C /* Auth */; };
+		5C01C9C52FDBCA3C000CA86C /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = 5C01C9C42FDBCA3C000CA86C /* Functions */; };
+		5C01C9C72FDBCA3C000CA86C /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 5C01C9C62FDBCA3C000CA86C /* PostgREST */; };
+		5C01C9C92FDBCA3C000CA86C /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 5C01C9C82FDBCA3C000CA86C /* Realtime */; };
+		5C01C9CB2FDBCA3C000CA86C /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 5C01C9CA2FDBCA3C000CA86C /* Storage */; };
+		5C01C9CD2FDBCA3C000CA86C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 5C01C9CC2FDBCA3C000CA86C /* Supabase */; };
 		A10000000000000000000011 /* CarniVisionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* CarniVisionApp.swift */; };
 		A10000000000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* LoginView.swift */; };
 		A10000000000000000000013 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* Colors.swift */; };
@@ -29,9 +35,9 @@
 		A10000000000000000000024 /* CarniTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* CarniTabBar.swift */; };
 		A10000000000000000000025 /* MainPlaceholders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* MainPlaceholders.swift */; };
 		A10000000000000000000026 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* CameraView.swift */; };
-		A10000000000000000000028 /* MuzzleDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* MuzzleDetector.mlpackage */; };
+		A10000000000000000000028 /* Models/MuzzleDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* Models/MuzzleDetector.mlpackage */; };
 		A10000000000000000000029 /* MuzzleDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* MuzzleDetectorService.swift */; };
-		A1000000000000000000002C /* CowFaceDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* CowFaceDetector.mlpackage */; };
+		A1000000000000000000002C /* Models/CowFaceDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* Models/CowFaceDetector.mlpackage */; };
 		A1000000000000000000002D /* CowFaceDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* CowFaceDetectorService.swift */; };
 		A1000000000000000000002E /* HerdData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* HerdData.swift */; };
 		A1000000000000000000002F /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* HomeView.swift */; };
@@ -41,7 +47,18 @@
 		A10000000000000000000033 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* Localization.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		5C01C9D62FDBCB29000CA86C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000002;
+			remoteInfo = CarniVision;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		5C01C9D22FDBCB29000CA86C /* CarniVisionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CarniVisionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000003 /* CarniVision.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CarniVision.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000001 /* CarniVisionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarniVisionApp.swift; sourceTree = "<group>"; };
 		B10000000000000000000002 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
@@ -66,9 +83,9 @@
 		B10000000000000000000015 /* CarniTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarniTabBar.swift; sourceTree = "<group>"; };
 		B10000000000000000000016 /* MainPlaceholders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainPlaceholders.swift; sourceTree = "<group>"; };
 		B10000000000000000000017 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
-		B10000000000000000000019 /* MuzzleDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Models/MuzzleDetector.mlpackage"; sourceTree = "<group>"; };
+		B10000000000000000000019 /* Models/MuzzleDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = Models/MuzzleDetector.mlpackage; sourceTree = "<group>"; };
 		B1000000000000000000001A /* MuzzleDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuzzleDetectorService.swift; sourceTree = "<group>"; };
-		B1000000000000000000001D /* CowFaceDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Models/CowFaceDetector.mlpackage"; sourceTree = "<group>"; };
+		B1000000000000000000001D /* Models/CowFaceDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = Models/CowFaceDetector.mlpackage; sourceTree = "<group>"; };
 		B1000000000000000000001E /* CowFaceDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CowFaceDetectorService.swift; sourceTree = "<group>"; };
 		B1000000000000000000001F /* HerdData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdData.swift; sourceTree = "<group>"; };
 		B10000000000000000000020 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
@@ -78,11 +95,28 @@
 		B10000000000000000000024 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		5C01C9D32FDBCB29000CA86C /* CarniVisionTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CarniVisionTests; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		5C01C9CF2FDBCB29000CA86C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A1000000000000000000000A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5C01C9C72FDBCA3C000CA86C /* PostgREST in Frameworks */,
+				5C01C9C52FDBCA3C000CA86C /* Functions in Frameworks */,
+				5C01C9CD2FDBCA3C000CA86C /* Supabase in Frameworks */,
+				5C01C9C32FDBCA3C000CA86C /* Auth in Frameworks */,
+				5C01C9CB2FDBCA3C000CA86C /* Storage in Frameworks */,
+				5C01C9C92FDBCA3C000CA86C /* Realtime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,6 +127,7 @@
 			isa = PBXGroup;
 			children = (
 				C10000000000000000000002 /* CarniVision */,
+				5C01C9D32FDBCB29000CA86C /* CarniVisionTests */,
 				C10000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -125,21 +160,23 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
-		C1000000000000000000000A /* Main */ = {
+		C10000000000000000000004 /* Theme */ = {
 			isa = PBXGroup;
 			children = (
-				B10000000000000000000014 /* MainTabView.swift */,
-				B10000000000000000000015 /* CarniTabBar.swift */,
-				B10000000000000000000016 /* MainPlaceholders.swift */,
-				B10000000000000000000020 /* HomeView.swift */,
-				B10000000000000000000021 /* AnimalsView.swift */,
-				B10000000000000000000022 /* AddAnimalView.swift */,
-				B10000000000000000000023 /* SettingsView.swift */,
-				B10000000000000000000017 /* CameraView.swift */,
-				B1000000000000000000001A /* MuzzleDetectorService.swift */,
-				B1000000000000000000001E /* CowFaceDetectorService.swift */,
+				B10000000000000000000003 /* Colors.swift */,
+				B1000000000000000000000C /* CarniFont.swift */,
+				B1000000000000000000000D /* CarniLayout.swift */,
 			);
-			path = Main;
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		C10000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000003 /* CarniVision.app */,
+				5C01C9D22FDBCB29000CA86C /* CarniVisionTests.xctest */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 		C10000000000000000000006 /* Models */ = {
@@ -166,21 +203,11 @@
 			isa = PBXGroup;
 			children = (
 				B1000000000000000000000B /* farm_background.mp4 */,
-				B10000000000000000000019 /* MuzzleDetector.mlpackage */,
-				B1000000000000000000001D /* CowFaceDetector.mlpackage */,
+				B10000000000000000000019 /* Models/MuzzleDetector.mlpackage */,
+				B1000000000000000000001D /* Models/CowFaceDetector.mlpackage */,
 				C10000000000000000000009 /* Fonts */,
 			);
 			path = Resources;
-			sourceTree = "<group>";
-		};
-		C10000000000000000000004 /* Theme */ = {
-			isa = PBXGroup;
-			children = (
-				B10000000000000000000003 /* Colors.swift */,
-				B1000000000000000000000C /* CarniFont.swift */,
-				B1000000000000000000000D /* CarniLayout.swift */,
-			);
-			path = Theme;
 			sourceTree = "<group>";
 		};
 		C10000000000000000000009 /* Fonts */ = {
@@ -193,17 +220,49 @@
 			path = Fonts;
 			sourceTree = "<group>";
 		};
-		C10000000000000000000005 /* Products */ = {
+		C1000000000000000000000A /* Main */ = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000003 /* CarniVision.app */,
+				B10000000000000000000014 /* MainTabView.swift */,
+				B10000000000000000000015 /* CarniTabBar.swift */,
+				B10000000000000000000016 /* MainPlaceholders.swift */,
+				B10000000000000000000020 /* HomeView.swift */,
+				B10000000000000000000021 /* AnimalsView.swift */,
+				B10000000000000000000022 /* AddAnimalView.swift */,
+				B10000000000000000000023 /* SettingsView.swift */,
+				B10000000000000000000017 /* CameraView.swift */,
+				B1000000000000000000001A /* MuzzleDetectorService.swift */,
+				B1000000000000000000001E /* CowFaceDetectorService.swift */,
 			);
-			name = Products;
+			path = Main;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		5C01C9D12FDBCB29000CA86C /* CarniVisionTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C01C9D82FDBCB29000CA86C /* Build configuration list for PBXNativeTarget "CarniVisionTests" */;
+			buildPhases = (
+				5C01C9CE2FDBCB29000CA86C /* Sources */,
+				5C01C9CF2FDBCB29000CA86C /* Frameworks */,
+				5C01C9D02FDBCB29000CA86C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5C01C9D72FDBCB29000CA86C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5C01C9D32FDBCB29000CA86C /* CarniVisionTests */,
+			);
+			name = CarniVisionTests;
+			packageProductDependencies = (
+			);
+			productName = CarniVisionTests;
+			productReference = 5C01C9D22FDBCB29000CA86C /* CarniVisionTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		A10000000000000000000002 /* CarniVision */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A10000000000000000000007 /* Build configuration list for PBXNativeTarget "CarniVision" */;
@@ -228,9 +287,13 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1600;
+				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					5C01C9D12FDBCB29000CA86C = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = A10000000000000000000002;
+					};
 					A10000000000000000000002 = {
 						CreatedOnToolsVersion = 16.0;
 					};
@@ -245,16 +308,27 @@
 				Base,
 			);
 			mainGroup = C10000000000000000000001;
+			packageReferences = (
+				5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			productRefGroup = C10000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				A10000000000000000000002 /* CarniVision */,
+				5C01C9D12FDBCB29000CA86C /* CarniVisionTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		5C01C9D02FDBCB29000CA86C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A10000000000000000000009 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -270,6 +344,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		5C01C9CE2FDBCB29000CA86C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -291,9 +372,9 @@
 				A10000000000000000000024 /* CarniTabBar.swift in Sources */,
 				A10000000000000000000025 /* MainPlaceholders.swift in Sources */,
 				A10000000000000000000026 /* CameraView.swift in Sources */,
-				A10000000000000000000028 /* MuzzleDetector.mlpackage in Sources */,
+				A10000000000000000000028 /* Models/MuzzleDetector.mlpackage in Sources */,
 				A10000000000000000000029 /* MuzzleDetectorService.swift in Sources */,
-				A1000000000000000000002C /* CowFaceDetector.mlpackage in Sources */,
+				A1000000000000000000002C /* Models/CowFaceDetector.mlpackage in Sources */,
 				A1000000000000000000002D /* CowFaceDetectorService.swift in Sources */,
 				A1000000000000000000002E /* HerdData.swift in Sources */,
 				A1000000000000000000002F /* HomeView.swift in Sources */,
@@ -306,7 +387,133 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		5C01C9D72FDBCB29000CA86C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000002 /* CarniVision */;
+			targetProxy = 5C01C9D62FDBCB29000CA86C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		5C01C9D92FDBCB29000CA86C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRJ6S74GY7;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = Samperlabs.CarniVisionTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CarniVision.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CarniVision";
+			};
+			name = Debug;
+		};
+		5C01C9DA2FDBCB29000CA86C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BRJ6S74GY7;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = Samperlabs.CarniVisionTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CarniVision.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CarniVision";
+			};
+			name = Release;
+		};
 		A10000000000000000000004 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -419,6 +626,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		5C01C9D82FDBCB29000CA86C /* Build configuration list for PBXNativeTarget "CarniVisionTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C01C9D92FDBCB29000CA86C /* Debug */,
+				5C01C9DA2FDBCB29000CA86C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A10000000000000000000006 /* Build configuration list for PBXProject "CarniVision" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -438,6 +654,50 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5C01C9C22FDBCA3C000CA86C /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		5C01C9C42FDBCA3C000CA86C /* Functions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Functions;
+		};
+		5C01C9C62FDBCA3C000CA86C /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		5C01C9C82FDBCA3C000CA86C /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		5C01C9CA2FDBCA3C000CA86C /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		5C01C9CC2FDBCA3C000CA86C /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5C01C9C12FDBCA3C000CA86C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A10000000000000000000001 /* Project object */;
 }
