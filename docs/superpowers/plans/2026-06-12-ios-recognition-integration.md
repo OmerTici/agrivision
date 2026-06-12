@@ -117,7 +117,7 @@ git commit -m "Add supabase-swift package and CarniVisionTests target"
 - Create: `CarniVision/Config/AppConfig.swift`
 - Modify: `README.md` (append)
 
-- [ ] **Step 1: Add config keys to Info.plist**
+- [x] **Step 1: Add config keys to Info.plist**
 
 Replace this exact block in `CarniVision/Info.plist`:
 
@@ -139,7 +139,7 @@ with:
 	<string>https://carnivision-embedder-78377568014.europe-west1.run.app</string>
 ```
 
-- [ ] **Step 2: Create AppConfig**
+- [x] **Step 2: Create AppConfig**
 
 Create `CarniVision/Config/AppConfig.swift`:
 
@@ -181,7 +181,7 @@ enum AppConfig {
 }
 ```
 
-- [ ] **Step 3: Register AppConfig.swift in the app target**
+- [x] **Step 3: Register AppConfig.swift in the app target**
 
 In Xcode, drag `CarniVision/Config/AppConfig.swift` into the **CarniVision** group so it joins the app target's Compile Sources (or it is auto-added if created via Xcode's New File). Verify:
 
@@ -190,7 +190,7 @@ grep -c "AppConfig.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
-- [ ] **Step 4: Append operator setup to README**
+- [x] **Step 4: Append operator setup to README**
 
 Append to `README.md`:
 
@@ -208,7 +208,7 @@ Append to `README.md`:
    in-app sign up, see `AuthService` / `SignUpForm`.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CarniVision/Info.plist CarniVision/Config/AppConfig.swift README.md CarniVision.xcodeproj

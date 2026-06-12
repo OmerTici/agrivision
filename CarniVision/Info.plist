@@ -4,6 +4,12 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Carni_vision uses the camera to scan and identify animals.</string>
+	<key>SUPABASE_URL</key>
+	<string>https://xznmsmweefckkqjfepqs.supabase.co</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>REPLACE_WITH_SUPABASE_ANON_KEY</string>
+	<key>EMBEDDER_URL</key>
+	<string>https://carnivision-embedder-78377568014.europe-west1.run.app</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Lato-Regular.ttf</string>
