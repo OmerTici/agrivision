@@ -101,6 +101,7 @@ final class AuthService: ObservableObject {
     }
 
     func signOut() async {
+        errorMessage = nil
         do {
             try await backend.signOut()
             identity = nil

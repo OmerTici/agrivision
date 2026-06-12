@@ -3,8 +3,8 @@ import SwiftUI
 struct SignUpForm: View {
     var onBack: () -> Void
     var onSwitchToSignIn: () -> Void
-    var onAuthenticated: () -> Void = {}
 
+    @EnvironmentObject private var auth: AuthService
     @ObservedObject private var lang = LanguageManager.shared
     @State private var fullName = ""
     @State private var email = ""
@@ -73,7 +73,18 @@ struct SignUpForm: View {
                     )
                 }
 
-                PrimaryAuthButton(title: lang.t("auth.signupAction"), compact: true, disabled: !canSubmit) {
+                if let error = auth.errorMessage {
+                    Text(error)
+                        .font(CarniFont.regular(13))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                PrimaryAuthButton(
+                    title: auth.isWorking ? lang.t("auth.signingUp") : lang.t("auth.signupAction"),
+                    compact: true,
+                    disabled: !canSubmit || auth.isWorking
+                ) {
                     handleSignUp()
                 }
             }
@@ -96,7 +107,15 @@ struct SignUpForm: View {
     }
 
     private func handleSignUp() {
-        print("Sign up — name: \(fullName), email: \(email), phone: \(selectedCountry.dialCode) \(phoneNumber)")
-        onAuthenticated()
+        guard password == confirmPassword else {
+            auth.errorMessage = lang.t("auth.mismatch")
+            return
+        }
+        Task {
+            await auth.signUp(
+                email: email.trimmingCharacters(in: .whitespaces),
+                password: password
+            )
+        }
     }
 }

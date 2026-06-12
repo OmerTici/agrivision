@@ -1,21 +1,18 @@
 import SwiftUI
 
 struct RootView: View {
-    @State private var isAuthenticated = false
+    @EnvironmentObject private var auth: AuthService
 
     var body: some View {
         ZStack {
-            if isAuthenticated {
+            if auth.identity != nil {
                 MainTabView()
                     .transition(.opacity)
             } else {
-                LandingView {
-                    withAnimation(.easeInOut(duration: 0.4)) {
-                        isAuthenticated = true
-                    }
-                }
-                .transition(.opacity)
+                LandingView()
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.4), value: auth.identity)
     }
 }

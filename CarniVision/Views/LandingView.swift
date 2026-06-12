@@ -7,8 +7,6 @@ struct LandingView: View {
         case signUp
     }
 
-    var onAuthenticated: () -> Void = {}
-
     @ObservedObject private var lang = LanguageManager.shared
     @State private var screen: Screen = .landing
 
@@ -29,8 +27,7 @@ struct LandingView: View {
             if screen == .signIn {
                 SignInForm(
                     onBack: { goTo(.landing) },
-                    onSwitchToSignUp: { goTo(.signUp) },
-                    onAuthenticated: onAuthenticated
+                    onSwitchToSignUp: { goTo(.signUp) }
                 )
                 .transition(.move(edge: .bottom))
             }
@@ -38,8 +35,7 @@ struct LandingView: View {
             if screen == .signUp {
                 SignUpForm(
                     onBack: { goTo(.landing) },
-                    onSwitchToSignIn: { goTo(.signIn) },
-                    onAuthenticated: onAuthenticated
+                    onSwitchToSignIn: { goTo(.signIn) }
                 )
                 .transition(.move(edge: .bottom))
             }

@@ -3,8 +3,8 @@ import SwiftUI
 struct SignInForm: View {
     var onBack: () -> Void
     var onSwitchToSignUp: () -> Void
-    var onAuthenticated: () -> Void = {}
 
+    @EnvironmentObject private var auth: AuthService
     @ObservedObject private var lang = LanguageManager.shared
     @State private var loginMethod: AuthMethod = .email
     @State private var email = ""
@@ -60,9 +60,19 @@ struct SignInForm: View {
                         }
                     }
 
-                    PrimaryAuthButton(title: lang.t("auth.login")) {
+                    if let error = auth.errorMessage {
+                        Text(error)
+                            .font(CarniFont.regular(13))
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    PrimaryAuthButton(
+                        title: auth.isWorking ? lang.t("auth.signingIn") : lang.t("auth.login")
+                    ) {
                         handleLogin()
                     }
+                    .disabled(auth.isWorking || email.isEmpty || password.isEmpty)
                 }
 
                 AuthFooterPrompt(
@@ -85,12 +95,11 @@ struct SignInForm: View {
     }
 
     private func handleLogin() {
-        switch loginMethod {
-        case .email:
-            print("Login with email: \(email)")
-        case .phone:
-            print("Login with phone: \(selectedCountry.dialCode) \(phoneNumber)")
+        Task {
+            await auth.signIn(
+                email: email.trimmingCharacters(in: .whitespaces),
+                password: password
+            )
         }
-        onAuthenticated()
     }
 }
