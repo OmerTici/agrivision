@@ -222,7 +222,7 @@ git commit -m "Add app config keys and AppConfig accessor"
 **Files:**
 - Create: `CarniVision/Services/SupabaseClientProvider.swift`
 
-- [ ] **Step 1: Create the provider**
+- [x] **Step 1: Create the provider**
 
 Create `CarniVision/Services/SupabaseClientProvider.swift`:
 
@@ -240,7 +240,7 @@ enum SupabaseClientProvider {
 }
 ```
 
-- [ ] **Step 2: Register the file in the app target**
+- [x] **Step 2: Register the file in the app target**
 
 In Xcode, add `CarniVision/Services/SupabaseClientProvider.swift` to the **CarniVision** target. Verify:
 
@@ -249,7 +249,7 @@ grep -c "SupabaseClientProvider.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CarniVision/Services/SupabaseClientProvider.swift CarniVision.xcodeproj

@@ -46,6 +46,7 @@
 		A10000000000000000000032 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* SettingsView.swift */; };
 		A10000000000000000000033 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* Localization.swift */; };
 		A10000000000000000000034 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* AppConfig.swift */; };
+		A10000000000000000000035 /* SupabaseClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* SupabaseClientProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,6 +96,7 @@
 		B10000000000000000000023 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B10000000000000000000024 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		B10000000000000000000025 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		B10000000000000000000026 /* SupabaseClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -140,6 +142,7 @@
 				B10000000000000000000001 /* CarniVisionApp.swift */,
 				B10000000000000000000011 /* Info.plist */,
 				C1000000000000000000000B /* Config */,
+				C1000000000000000000000C /* Services */,
 				C10000000000000000000006 /* Models */,
 				C10000000000000000000003 /* Views */,
 				C10000000000000000000004 /* Theme */,
@@ -246,6 +249,14 @@
 				B10000000000000000000025 /* AppConfig.swift */,
 			);
 			path = Config;
+			sourceTree = "<group>";
+		};
+		C1000000000000000000000C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000026 /* SupabaseClientProvider.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -394,6 +405,7 @@
 				A10000000000000000000032 /* SettingsView.swift in Sources */,
 				A10000000000000000000033 /* Localization.swift in Sources */,
 				A10000000000000000000034 /* AppConfig.swift in Sources */,
+				A10000000000000000000035 /* SupabaseClientProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
