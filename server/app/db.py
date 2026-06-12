@@ -77,3 +77,16 @@ async def insert_embeddings(
     ]
     await pool.executemany(INSERT_SQL, args)
     return len(args)
+
+
+INSERT_EVENT_SQL = """
+insert into events (owner, kind, animal_id, result, score)
+values ($1::uuid, $2, $3::uuid, $4, $5)
+"""
+
+
+async def insert_event(
+    owner: str, kind: str, animal_id: str | None, result: str, score: float | None
+) -> None:
+    pool = await get_pool()
+    await pool.execute(INSERT_EVENT_SQL, owner, kind, animal_id, result, score)

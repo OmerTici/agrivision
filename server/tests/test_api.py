@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import app.main as main_mod
 from app.decision import Candidate
@@ -135,3 +136,79 @@ def test_enroll_with_full_images(client, jpeg_bytes, monkeypatch):
     assert r.json() == {"enrolled_count": 1, "full_images_stored": 2}
     assert sum("/muzzle/" in p for p in uploads) == 1
     assert sum("/full/" in p for p in uploads) == 2
+
+
+def test_enroll_writes_event(client, jpeg_bytes, monkeypatch):
+    recorded = []
+
+    async def fake_animal_owned(animal_id, owner):
+        return True
+
+    async def fake_upload(path, data):
+        return path
+
+    async def fake_insert(animal_id, owner, vecs, image_paths):
+        return len(image_paths)
+
+    async def fake_insert_event(owner, kind, animal_id, result, score):
+        recorded.append((owner, kind, animal_id, result, score))
+
+    monkeypatch.setattr(main_mod.db, "animal_owned", fake_animal_owned)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
+    monkeypatch.setattr(main_mod.db, "insert_embeddings", fake_insert)
+    monkeypatch.setattr(main_mod.db, "insert_event", fake_insert_event)
+
+    files = [("images", ("m.jpg", jpeg_bytes, "image/jpeg"))]
+    r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
+    assert r.status_code == 200
+    assert recorded == [(TEST_UID, "enroll", ANIMAL, "enrolled", None)]
+
+
+def test_identify_identified_writes_event(client, jpeg_bytes, monkeypatch):
+    recorded = []
+
+    async def fake_match(vec, owner):
+        return [Candidate(ANIMAL, "Bessie", 0.91), Candidate("other", None, 0.60)]
+
+    async def fake_insert_event(owner, kind, animal_id, result, score):
+        recorded.append((owner, kind, animal_id, result, score))
+
+    monkeypatch.setattr(main_mod.db, "match", fake_match)
+    monkeypatch.setattr(main_mod.db, "insert_event", fake_insert_event)
+
+    r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
+    assert r.status_code == 200
+    assert recorded == [(TEST_UID, "identify", ANIMAL, "identified", pytest.approx(0.91))]
+
+
+def test_identify_unknown_writes_event(client, jpeg_bytes, monkeypatch):
+    recorded = []
+
+    async def fake_match(vec, owner):
+        return []  # empty gallery -> unknown
+
+    async def fake_insert_event(owner, kind, animal_id, result, score):
+        recorded.append((owner, kind, animal_id, result, score))
+
+    monkeypatch.setattr(main_mod.db, "match", fake_match)
+    monkeypatch.setattr(main_mod.db, "insert_event", fake_insert_event)
+
+    r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
+    assert r.status_code == 200
+    assert r.json()["decision"] == "unknown"
+    assert recorded == [(TEST_UID, "identify", None, "unknown", pytest.approx(0.0))]
+
+
+def test_event_insert_failure_does_not_fail_response(client, jpeg_bytes, monkeypatch):
+    async def fake_match(vec, owner):
+        return []
+
+    async def exploding_insert_event(owner, kind, animal_id, result, score):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(main_mod.db, "match", fake_match)
+    monkeypatch.setattr(main_mod.db, "insert_event", exploding_insert_event)
+
+    r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
+    assert r.status_code == 200
+    assert r.json()["decision"] == "unknown"

@@ -53,6 +53,17 @@ def _embed(images: list[Image.Image]):
         raise HTTPException(status_code=500, detail="embedding failed")
 
 
+async def _record_event(
+    owner: str, kind: str, animal_id: str | None, result: str, score: float | None
+) -> None:
+    """Best-effort event-feed write: an insert failure must never fail the
+    API response — log and continue."""
+    try:
+        await db.insert_event(owner, kind, animal_id, result, score)
+    except Exception:
+        logger.exception("event insert failed (kind=%s, result=%s)", kind, result)
+
+
 # NOT /healthz — Google Frontend reserves that path on *.run.app and swallows it.
 @app.get("/health", response_model=HealthResponse)
 async def health():
@@ -69,6 +80,13 @@ async def identify(image: UploadFile = File(...), uid: str = Depends(current_uid
     candidates = await db.match(vec, uid)
     s = get_settings()
     d = decide(candidates, s.sim_threshold, s.sim_margin)
+    await _record_event(
+        uid,
+        "identify",
+        d.animal_id,
+        "identified" if d.decision == "identified" else "unknown",
+        d.score,
+    )
     return IdentifyResponse(
         decision=d.decision,
         animal_id=d.animal_id,
@@ -107,4 +125,5 @@ async def enroll(
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="image storage upload failed")
     count = await db.insert_embeddings(animal_id, uid, vecs, paths)
+    await _record_event(uid, "enroll", animal_id, "enrolled", None)
     return EnrollResponse(enrolled_count=count, full_images_stored=len(raw_full))

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app import db
 from app.auth import current_uid
 from app.main import app, state
 
@@ -19,9 +20,15 @@ class FakeEmbedder:
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     state["embedder"] = FakeEmbedder()
     app.dependency_overrides[current_uid] = lambda: TEST_UID
+
+    async def _noop_insert_event(owner, kind, animal_id, result, score):
+        return None
+
+    # Unit tests never touch Postgres; event-asserting tests re-stub this.
+    monkeypatch.setattr(db, "insert_event", _noop_insert_event)
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()
