@@ -2531,7 +2531,7 @@ The identify result card's Enroll button (`onRequestEnroll`) must create a row a
 **Files:**
 - Modify: `CarniVision/Views/Main/MainTabView.swift`
 
-- [ ] **Step 1: Add enroll-from-identify coordination to MainTabView**
+- [x] **Step 1: Add enroll-from-identify coordination to MainTabView**
 
 In `CarniVision/Views/Main/MainTabView.swift`, replace the entire contents:
 
@@ -2625,7 +2625,7 @@ struct MainTabView: View {
 
 > The unknown-animal Enroll button routes the operator to the Add Animal form (which creates a row, then launches enrollment per Task 15). `pendingEnrollRequest` is reserved for a future auto-prefill; it is unused now and may be omitted — keep `selected = .addAnimal` as the wiring.
 
-- [ ] **Step 2: Remove the unused state to avoid a warning**
+- [x] **Step 2: Remove the unused state to avoid a warning**
 
 Replace this exact block:
 
@@ -2644,14 +2644,14 @@ with:
     @StateObject private var store = HerdStore()
 ```
 
-- [ ] **Step 3: Build to confirm it compiles**
+- [x] **Step 3: Build to confirm it compiles**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add CarniVision/Views/Main/MainTabView.swift

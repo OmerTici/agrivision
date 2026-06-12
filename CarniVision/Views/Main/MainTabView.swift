@@ -27,7 +27,10 @@ struct MainTabView: View {
         case .animals:
             AnimalsScreen()
         case .camera:
-            CameraScreen(onClose: { selected = .home })
+            CameraScreen(
+                onClose: { selected = .home },
+                onRequestEnroll: { selected = .addAnimal }
+            )
         case .addAnimal:
             AddAnimalScreen()
         case .settings:
