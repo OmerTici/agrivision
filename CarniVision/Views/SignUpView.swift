@@ -22,74 +22,83 @@ struct SignUpForm: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             AuthBackButton(systemName: "chevron.left", action: onBack)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
 
-            AuthHeader(title: lang.t("auth.create"), compact: true)
+            ScrollView {
+                VStack(spacing: 12) {
+                    AuthHeader(title: lang.t("auth.create"), compact: true)
 
-            AuthCard(compact: true, lightStyle: true) {
-                VStack(spacing: 8) {
-                    AuthTextField(
-                        title: lang.t("auth.fullName"),
-                        placeholder: lang.t("auth.fullNamePh"),
-                        text: $fullName,
-                        textContentType: .name,
-                        compact: true,
-                        lightStyle: true
-                    )
+                    AuthCard(compact: true, lightStyle: true) {
+                        VStack(spacing: 8) {
+                            AuthTextField(
+                                title: lang.t("auth.fullName"),
+                                placeholder: lang.t("auth.fullNamePh"),
+                                text: $fullName,
+                                textContentType: .name,
+                                compact: true,
+                                lightStyle: true
+                            )
 
-                    AuthTextField(
-                        title: lang.t("auth.email"),
-                        placeholder: lang.t("auth.emailPh"),
-                        text: $email,
-                        keyboardType: .emailAddress,
-                        textContentType: .emailAddress,
-                        compact: true,
-                        lightStyle: true
-                    )
+                            AuthTextField(
+                                title: lang.t("auth.email"),
+                                placeholder: lang.t("auth.emailPh"),
+                                text: $email,
+                                keyboardType: .emailAddress,
+                                textContentType: .emailAddress,
+                                compact: true,
+                                lightStyle: true
+                            )
 
-                    PhoneNumberField(
-                        title: lang.t("auth.phone"),
-                        selectedCountry: $selectedCountry,
-                        phoneNumber: $phoneNumber,
-                        compact: true,
-                        lightStyle: true
-                    )
+                            PhoneNumberField(
+                                title: lang.t("auth.phone"),
+                                selectedCountry: $selectedCountry,
+                                phoneNumber: $phoneNumber,
+                                compact: true,
+                                lightStyle: true
+                            )
 
-                    AuthSecureField(
-                        title: lang.t("auth.password"),
-                        placeholder: lang.t("auth.createPw"),
-                        text: $password,
-                        compact: true,
-                        lightStyle: true
-                    )
+                            AuthSecureField(
+                                title: lang.t("auth.password"),
+                                placeholder: lang.t("auth.createPw"),
+                                text: $password,
+                                compact: true,
+                                lightStyle: true
+                            )
 
-                    AuthSecureField(
-                        title: lang.t("auth.confirmPw"),
-                        placeholder: lang.t("auth.repeatPw"),
-                        text: $confirmPassword,
-                        compact: true,
-                        lightStyle: true
-                    )
+                            AuthSecureField(
+                                title: lang.t("auth.confirmPw"),
+                                placeholder: lang.t("auth.repeatPw"),
+                                text: $confirmPassword,
+                                compact: true,
+                                lightStyle: true
+                            )
+                        }
+
+                        if let error = auth.errorMessage {
+                            Text(error)
+                                .font(CarniFont.regular(13))
+                                .foregroundStyle(.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        PrimaryAuthButton(
+                            title: auth.isWorking ? lang.t("auth.signingUp") : lang.t("auth.signupAction"),
+                            compact: true,
+                            disabled: !canSubmit || auth.isWorking
+                        ) {
+                            handleSignUp()
+                        }
+                    }
                 }
-
-                if let error = auth.errorMessage {
-                    Text(error)
-                        .font(CarniFont.regular(13))
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                PrimaryAuthButton(
-                    title: auth.isWorking ? lang.t("auth.signingUp") : lang.t("auth.signupAction"),
-                    compact: true,
-                    disabled: !canSubmit || auth.isWorking
-                ) {
-                    handleSignUp()
-                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
             }
-
-            Spacer(minLength: 0)
+            .scrollDismissesKeyboard(.interactively)
+            .scrollIndicators(.hidden)
 
             AuthFooterPrompt(
                 prompt: lang.t("auth.haveAccount"),
@@ -98,11 +107,9 @@ struct SignUpForm: View {
             ) {
                 onSwitchToSignIn()
             }
-            .padding(.bottom, 8)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 24)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
