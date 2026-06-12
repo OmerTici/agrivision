@@ -1555,7 +1555,7 @@ git commit -m "Inject recognition service and warm it up at launch"
 **Files:**
 - Create: `CarniVision/Services/AnimalRepository.swift`
 
-- [ ] **Step 1: Create the repository**
+- [x] **Step 1: Create the repository**
 
 Create `CarniVision/Services/AnimalRepository.swift`. The insert sets `owner` explicitly (schema is `not null`, no default) and omits `status` (nullable). The SDK attaches the session JWT so RLS scopes the row.
 
@@ -1631,7 +1631,7 @@ struct AnimalRepository {
 
 > `AnimalSex.rawValue` is `"Female"` / `"Male"` (from `HerdData.swift`); `.lowercased()` yields the lowercase text the server expects.
 
-- [ ] **Step 2: Register in the app target**
+- [x] **Step 2: Register in the app target**
 
 In Xcode add `CarniVision/Services/AnimalRepository.swift` to the **CarniVision** target. Verify:
 
@@ -1640,7 +1640,7 @@ grep -c "AnimalRepository.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CarniVision/Services/AnimalRepository.swift CarniVision.xcodeproj

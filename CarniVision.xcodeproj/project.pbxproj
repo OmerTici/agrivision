@@ -53,6 +53,7 @@
 		A10000000000000000000039 /* ImageEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002A /* ImageEncoding.swift */; };
 		A1000000000000000000003A /* RecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002B /* RecognitionService.swift */; };
 		A1000000000000000000003B /* CloudRunRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002C /* CloudRunRecognitionService.swift */; };
+		A1000000000000000000003C /* AnimalRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002D /* AnimalRepository.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -109,6 +110,7 @@
 		B1000000000000000000002A /* ImageEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageEncoding.swift; sourceTree = "<group>"; };
 		B1000000000000000000002B /* RecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionService.swift; sourceTree = "<group>"; };
 		B1000000000000000000002C /* CloudRunRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRunRecognitionService.swift; sourceTree = "<group>"; };
+		B1000000000000000000002D /* AnimalRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimalRepository.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -273,6 +275,7 @@
 				B1000000000000000000002A /* ImageEncoding.swift */,
 				B1000000000000000000002B /* RecognitionService.swift */,
 				B1000000000000000000002C /* CloudRunRecognitionService.swift */,
+				B1000000000000000000002D /* AnimalRepository.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -430,6 +433,7 @@
 				A10000000000000000000039 /* ImageEncoding.swift in Sources */,
 				A1000000000000000000003A /* RecognitionService.swift in Sources */,
 				A1000000000000000000003B /* CloudRunRecognitionService.swift in Sources */,
+				A1000000000000000000003C /* AnimalRepository.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
