@@ -68,6 +68,8 @@ final class LanguageManager: ObservableObject {
             "home.weightTrend": "Herd Weight Trend",
             "home.recentScans": "Recent Scans",
             "home.seeAll": "See All",
+            "home.recentActions": "Recent Actions",
+            "home.noEvents": "No activity yet — enroll or identify an animal to see it here.",
             "home.needsScan": "Needs Scanning",
 
             // Tab bar
@@ -248,6 +250,8 @@ final class LanguageManager: ObservableObject {
             "home.weightTrend": "Sürü Ağırlık Eğilimi",
             "home.recentScans": "Son Taramalar",
             "home.seeAll": "Tümünü Gör",
+            "home.recentActions": "Son İşlemler",
+            "home.noEvents": "Henüz işlem yok — burada görmek için bir hayvan kaydedin veya tanımlayın.",
             "home.needsScan": "Tarama Bekleyenler",
 
             // Tab bar

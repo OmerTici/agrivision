@@ -238,9 +238,6 @@ extension Animal {
 }
 
 extension HerdStore {
-    var recentScans: [ScanEvent] { events }
-    var herdTrend: [WeightEntry] { [] }
-    var averageWeight: Double { 0 }
     var animalsByScanUrgency: [Animal] { animals }
 
     func addAnimal(
