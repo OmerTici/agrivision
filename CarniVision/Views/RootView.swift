@@ -16,3 +16,10 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.4), value: auth.identity)
     }
 }
+
+#if DEBUG
+#Preview {
+    RootView()
+        .environmentObject(AuthService())
+}
+#endif

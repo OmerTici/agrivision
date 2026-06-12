@@ -1524,3 +1524,25 @@ struct MuzzleResultSheet: View {
         }
     }
 }
+
+// MARK: - Previews
+
+#if DEBUG
+extension CloudRunRecognitionService {
+    /// A ready-state service for previews; never hits the network because
+    /// previews don't trigger capture.
+    static var preview: CloudRunRecognitionService {
+        let s = CloudRunRecognitionService(
+            baseURL: URL(string: "https://preview.invalid")!,
+            tokenProvider: { "preview-token" }
+        )
+        s.isReady = true
+        return s
+    }
+}
+
+#Preview {
+    CameraScreen()
+        .environmentObject(CloudRunRecognitionService.preview)
+}
+#endif
