@@ -37,12 +37,21 @@ def _service_headers() -> dict:
 
 
 def _ensure_user(email: str, password: str) -> None:
-    # 200/201 = created; 422 = already exists — both fine, sign-in verifies.
-    httpx.post(
+    r = httpx.post(
         f"{_url()}/auth/v1/admin/users",
         headers=_service_headers(),
         json={"email": email, "password": password, "email_confirm": True},
     )
+    # 200/201 = created; 422 = already exists — both fine, sign-in verifies.
+    if r.status_code not in (200, 201, 422):
+        raise RuntimeError(f"admin user create failed ({r.status_code}): {r.text}")
+
+
+def _bucket() -> str:
+    # Same source the app uses (settings reads STORAGE_BUCKET env / .env, default "muzzles").
+    from app.config import get_settings
+
+    return get_settings().storage_bucket
 
 
 def _sign_in(email: str, password: str) -> tuple[str, str]:
@@ -80,6 +89,7 @@ async def test_rls_blocks_cross_owner_reads():
 
     conn = await asyncpg.connect(os.environ["DATABASE_URL"], statement_cache_size=0)
     object_path = None
+    animal_id = None
     try:
         animal_id = await conn.fetchval(
             "insert into animals (owner, name) values ($1::uuid, $2) returning id::text",
@@ -104,14 +114,14 @@ async def test_rls_blocks_cross_owner_reads():
 
         # --- B cannot read A's photo ---
         r = httpx.get(
-            f"{_url()}/storage/v1/object/authenticated/muzzles/{object_path}",
+            f"{_url()}/storage/v1/object/authenticated/{_bucket()}/{object_path}",
             headers=_user_headers(token_b),
         )
         assert r.status_code != 200, f"cross-owner storage read allowed: {r.status_code}"
 
         # --- A CAN read their own photo (proves the read policy exists) ---
         r = httpx.get(
-            f"{_url()}/storage/v1/object/authenticated/muzzles/{object_path}",
+            f"{_url()}/storage/v1/object/authenticated/{_bucket()}/{object_path}",
             headers=_user_headers(token_a),
         )
         assert r.status_code == 200, (
@@ -120,25 +130,44 @@ async def test_rls_blocks_cross_owner_reads():
         )
 
         # --- A sees their own rows via PostgREST ---
-        r = httpx.get(f"{_url()}/rest/v1/animals?select=id", headers=_user_headers(token_a))
+        # Filter server-side: A is the shared pilot account, so unfiltered reads
+        # could hit PostgREST's 1000-row default cap and miss the test rows.
+        r = httpx.get(
+            f"{_url()}/rest/v1/animals?select=id&id=eq.{animal_id}",
+            headers=_user_headers(token_a),
+        )
         r.raise_for_status()
         assert animal_id in [row["id"] for row in r.json()]
 
         r = httpx.get(
-            f"{_url()}/rest/v1/events?select=animal_id,result,score",
+            f"{_url()}/rest/v1/events?select=animal_id,result,score&animal_id=eq.{animal_id}",
             headers=_user_headers(token_a),
         )
         r.raise_for_status()
         assert any(row["animal_id"] == animal_id for row in r.json())
     finally:
-        await conn.execute("delete from events where owner = $1::uuid", uid_a)
-        await conn.execute(
-            "delete from animals where owner = $1::uuid and name = 'rls-test-animal'", uid_a
-        )
-        await conn.close()
+        # Cleanup is scoped to THIS test's rows only (USER_A is the shared pilot
+        # account — never delete by owner). Each step is isolated so one failure
+        # doesn't orphan the rest.
+        if animal_id:
+            try:
+                await conn.execute("delete from events where animal_id = $1::uuid", animal_id)
+            except Exception:
+                pass
+            try:
+                await conn.execute("delete from animals where id = $1::uuid", animal_id)
+            except Exception:
+                pass
+        try:
+            await conn.close()
+        except Exception:
+            pass
         if object_path:
-            httpx.request(
-                "DELETE",
-                f"{_url()}/storage/v1/object/muzzles/{object_path}",
-                headers=_service_headers(),
-            )
+            try:
+                httpx.request(
+                    "DELETE",
+                    f"{_url()}/storage/v1/object/{_bucket()}/{object_path}",
+                    headers=_service_headers(),
+                )
+            except Exception:
+                pass
