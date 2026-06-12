@@ -2,12 +2,6 @@ import SwiftUI
 
 // MARK: - Models
 
-struct WeightEntry: Identifiable {
-    let id = UUID()
-    let date: Date
-    let kg: Double
-}
-
 enum AnimalSex: String, CaseIterable, Identifiable {
     case female = "Female"
     case male = "Male"
@@ -22,51 +16,21 @@ enum AnimalSex: String, CaseIterable, Identifiable {
     }
 }
 
-enum AnimalStatus: String {
-    case healthy = "Healthy"
-    case pregnant = "Pregnant"
-    case attention = "Needs Attention"
-
-    var key: String {
-        switch self {
-        case .healthy: return "status.healthy"
-        case .pregnant: return "status.pregnant"
-        case .attention: return "status.attention"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .healthy: return CarniColors.successGreen
-        case .pregnant: return Color(red: 64 / 255, green: 130 / 255, blue: 224 / 255)
-        case .attention: return Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255)
-        }
-    }
-}
-
 struct Animal: Identifiable {
-    let id = UUID()
+    let id: UUID
     var name: String
     var tag: String
     var breed: String
     var sex: AnimalSex
-    var birthDate: Date
-    var status: AnimalStatus
+    var birthDate: Date?
+    /// Enrollment date (the DB row's created_at).
+    var createdAt: Date
+    /// Derived server-side: true when the animal has at least one embedding.
     var muzzleRegistered: Bool
-    /// When this animal's muzzle was last scanned; nil if never.
-    var lastScanned: Date?
-    var weights: [WeightEntry]
     var avatarColor: Color
 
-    var currentWeight: Double? { weights.last?.kg }
-
-    /// Change since the previous weigh-in.
-    var weightDelta: Double? {
-        guard weights.count >= 2 else { return nil }
-        return weights[weights.count - 1].kg - weights[weights.count - 2].kg
-    }
-
     func ageDescription(_ lang: LanguageManager) -> String {
+        guard let birthDate else { return "—" }
         let parts = Calendar.current.dateComponents([.year, .month], from: birthDate, to: Date())
         let years = parts.year ?? 0
         let months = parts.month ?? 0
@@ -78,195 +42,215 @@ struct Animal: Identifiable {
     }
 }
 
-enum ScanResult: String {
-    case identified = "Identified"
-    case newRegistration = "New ID"
-    case failed = "No Match"
+extension Animal {
+    static let avatarPalette: [Color] = [
+        CarniColors.purple,
+        Color(red: 70 / 255, green: 152 / 255, blue: 115 / 255),
+        Color(red: 72 / 255, green: 122 / 255, blue: 204 / 255),
+        Color(red: 222 / 255, green: 138 / 255, blue: 60 / 255),
+        Color(red: 204 / 255, green: 96 / 255, blue: 144 / 255),
+        Color(red: 52 / 255, green: 144 / 255, blue: 150 / 255),
+    ]
 
-    var key: String {
-        switch self {
-        case .identified: return "scan.identified"
-        case .newRegistration: return "scan.newID"
-        case .failed: return "scan.noMatch"
-        }
+    init(record: AnimalRecord) {
+        self.init(
+            id: record.id,
+            name: record.name ?? "",
+            tag: record.tag ?? "",
+            breed: record.breed ?? "",
+            sex: record.sex == "male" ? .male : .female,
+            birthDate: record.birthDate,
+            createdAt: record.createdAt,
+            muzzleRegistered: record.muzzleRegistered,
+            // Stable across launches: derived from the UUID, not array position.
+            avatarColor: Self.avatarPalette[Int(record.id.uuid.0) % Self.avatarPalette.count]
+        )
+    }
+}
+
+/// One enroll/identify action from the server-side events feed, with the
+/// animal's display info resolved against the loaded herd.
+struct ScanEvent: Identifiable {
+    let id: UUID
+    let kind: String      // "enroll" | "identify"
+    let result: String    // "enrolled" | "identified" | "unknown"
+    let score: Double?
+    let date: Date
+    let animalID: UUID?
+    let animalName: String?
+    let avatarColor: Color
+
+    init(record: EventRecord, animals: [Animal]) {
+        let animal = record.animalID.flatMap { id in animals.first(where: { $0.id == id }) }
+        self.id = record.id
+        self.kind = record.kind
+        self.result = record.result
+        self.score = record.score
+        self.date = record.createdAt
+        self.animalID = record.animalID
+        self.animalName = animal?.name
+        self.avatarColor = animal?.avatarColor ?? Color.gray
     }
 
-    var color: Color {
-        switch self {
-        case .identified: return CarniColors.successGreen
-        case .newRegistration: return Color(red: 64 / 255, green: 130 / 255, blue: 224 / 255)
-        case .failed: return Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255)
+    /// Row text, e.g. "Deneme 1 — identified (0.64)" / "Unknown animal — no match".
+    func title(_ lang: LanguageManager) -> String {
+        let name = animalName ?? lang.t("event.unknownAnimal")
+        switch result {
+        case "enrolled":
+            return lang.t("event.enrolled", name)
+        case "identified":
+            if let score {
+                return lang.t("event.identified", name, score)
+            }
+            return lang.t("event.identifiedNoScore", name)
+        default:
+            return lang.t("event.noMatch")
         }
     }
 
     var icon: String {
-        switch self {
-        case .identified: return "checkmark.seal.fill"
-        case .newRegistration: return "plus.viewfinder"
-        case .failed: return "questionmark.circle.fill"
+        switch result {
+        case "enrolled": return "plus.viewfinder"
+        case "identified": return "checkmark.seal.fill"
+        default: return "questionmark.circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch result {
+        case "enrolled": return Color(red: 64 / 255, green: 130 / 255, blue: 224 / 255)
+        case "identified": return CarniColors.successGreen
+        default: return Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255)
         }
     }
 }
 
-struct ScanEvent: Identifiable {
-    let id = UUID()
-    var animalName: String
-    var animalTag: String
-    var date: Date
-    var result: ScanResult
-    var avatarColor: Color
+// MARK: - Repository seams (tests substitute these)
+
+protocol AnimalListing {
+    func list() async throws -> [AnimalRecord]
 }
 
-// MARK: - Store (dummy data for now; backend comes later)
+protocol EventListing {
+    func recent(limit: Int) async throws -> [EventRecord]
+}
 
+extension AnimalRepository: AnimalListing {}
+extension EventRepository: EventListing {}
+
+// MARK: - Store
+
+/// Owns the herd + event feed for the UI. No seed data: empty until `load()`.
+@MainActor
 final class HerdStore: ObservableObject {
-    @Published var animals: [Animal]
-    @Published var recentScans: [ScanEvent]
-    /// Average herd weight over the past months, for the dashboard trend chart.
-    @Published var herdTrend: [WeightEntry]
+    @Published var animals: [Animal] = []
+    @Published var events: [ScanEvent] = []
+    @Published var isLoading = false
+    @Published var loadError: String?
 
-    var averageWeight: Double {
-        let current = animals.compactMap(\.currentWeight)
-        guard !current.isEmpty else { return 0 }
-        return current.reduce(0, +) / Double(current.count)
-    }
+    private let animalSource: AnimalListing
+    private let eventSource: EventListing
 
-    var scansThisWeek: Int {
-        let weekAgo = Date().addingTimeInterval(-7 * 24 * 3600)
-        return recentScans.filter { $0.date > weekAgo }.count
+    init(
+        animalSource: AnimalListing = AnimalRepository(),
+        eventSource: EventListing = EventRepository()
+    ) {
+        self.animalSource = animalSource
+        self.eventSource = eventSource
     }
 
     var registeredCount: Int {
         animals.filter(\.muzzleRegistered).count
     }
 
-    /// Animals ordered by scan urgency: never scanned first, then longest since last scan.
-    var animalsByScanUrgency: [Animal] {
-        animals.sorted { ($0.lastScanned ?? .distantPast) < ($1.lastScanned ?? .distantPast) }
+    var scansThisWeek: Int {
+        let weekAgo = Date().addingTimeInterval(-7 * 24 * 3600)
+        return events.filter { $0.date > weekAgo }.count
     }
 
-    init() {
-        let purple = CarniColors.purple
-        let green = Color(red: 70 / 255, green: 152 / 255, blue: 115 / 255)
-        let blue = Color(red: 72 / 255, green: 122 / 255, blue: 204 / 255)
-        let orange = Color(red: 222 / 255, green: 138 / 255, blue: 60 / 255)
-        let pink = Color(red: 204 / 255, green: 96 / 255, blue: 144 / 255)
-        let teal = Color(red: 52 / 255, green: 144 / 255, blue: 150 / 255)
-
-        animals = [
-            Animal(
-                name: "Daisy", tag: "TR-0241", breed: "Holstein", sex: .female,
-                birthDate: Self.yearsAgo(4, months: 2), status: .healthy, muzzleRegistered: true,
-                lastScanned: Self.hoursAgo(2),
-                weights: Self.monthlySeries([596, 601, 605, 603, 608, 612]), avatarColor: purple
-            ),
-            Animal(
-                name: "Bella", tag: "TR-0187", breed: "Angus", sex: .female,
-                birthDate: Self.yearsAgo(3, months: 5), status: .pregnant, muzzleRegistered: true,
-                lastScanned: Self.hoursAgo(5 * 24),
-                weights: Self.monthlySeries([488, 495, 502, 509, 514, 521]), avatarColor: pink
-            ),
-            Animal(
-                name: "Thor", tag: "TR-0093", breed: "Simmental", sex: .male,
-                birthDate: Self.yearsAgo(5, months: 1), status: .healthy, muzzleRegistered: true,
-                lastScanned: Self.hoursAgo(5),
-                weights: Self.monthlySeries([905, 918, 926, 931, 940, 947]), avatarColor: blue
-            ),
-            Animal(
-                name: "Luna", tag: "TR-0312", breed: "Jersey", sex: .female,
-                birthDate: Self.yearsAgo(2, months: 0), status: .healthy, muzzleRegistered: true,
-                lastScanned: Self.hoursAgo(29),
-                weights: Self.monthlySeries([388, 395, 401, 406, 412, 415]), avatarColor: teal
-            ),
-            Animal(
-                name: "Rosie", tag: "TR-0156", breed: "Hereford", sex: .female,
-                birthDate: Self.yearsAgo(6, months: 3), status: .attention, muzzleRegistered: true,
-                lastScanned: Self.hoursAgo(12 * 24),
-                weights: Self.monthlySeries([575, 571, 568, 566, 562, 558]), avatarColor: orange
-            ),
-            Animal(
-                name: "Clover", tag: "TR-0388", breed: "Holstein", sex: .female,
-                birthDate: Self.yearsAgo(0, months: 11), status: .healthy, muzzleRegistered: false,
-                lastScanned: nil,
-                weights: Self.monthlySeries([212, 228, 241, 256, 270, 284]), avatarColor: green
-            ),
-        ]
-
-        recentScans = [
-            ScanEvent(
-                animalName: "Daisy", animalTag: "TR-0241",
-                date: Self.hoursAgo(2), result: .identified, avatarColor: purple
-            ),
-            ScanEvent(
-                animalName: "Thor", animalTag: "TR-0093",
-                date: Self.hoursAgo(5), result: .identified, avatarColor: blue
-            ),
-            ScanEvent(
-                animalName: "Clover", animalTag: "TR-0388",
-                date: Self.hoursAgo(22), result: .newRegistration, avatarColor: green
-            ),
-            ScanEvent(
-                animalName: "Luna", animalTag: "TR-0312",
-                date: Self.hoursAgo(29), result: .identified, avatarColor: teal
-            ),
-            ScanEvent(
-                animalName: "Unknown", animalTag: "—",
-                date: Self.hoursAgo(50), result: .failed, avatarColor: Color.gray
-            ),
-        ]
-
-        herdTrend = Self.monthlySeries([512, 518, 524, 529, 537, 556])
+    /// Fetches animals and events concurrently. Called on sign-in (MainTabView
+    /// .task), pull-to-refresh, after a successful enrollment, and after an
+    /// identify returns (the server wrote an event either way).
+    func load() async {
+        isLoading = true
+        loadError = nil
+        defer { isLoading = false }
+        do {
+            async let animalRecords = animalSource.list()
+            async let eventRecords = eventSource.recent(limit: 20)
+            let (records, recent) = try await (animalRecords, eventRecords)
+            let loaded = records.map(Animal.init(record:))
+            animals = loaded
+            events = recent.map { ScanEvent(record: $0, animals: loaded) }
+        } catch {
+            loadError = Self.loadErrorMessage(for: error)
+        }
     }
+
+    /// Optimistic insert after AnimalRepository.create succeeds; reconciled by
+    /// the next load(). muzzleRegistered stays false until embeddings exist.
+    func addAnimal(
+        id: UUID, name: String, tag: String, breed: String,
+        sex: AnimalSex, birthDate: Date
+    ) {
+        let record = AnimalRecord(
+            id: id, name: name, tag: tag, breed: breed,
+            sex: sex.rawValue.lowercased(), birthDate: birthDate,
+            createdAt: Date(), embeddingCount: 0
+        )
+        animals.insert(Animal(record: record), at: 0)
+    }
+
+    /// Maps load failures to a localized banner message at the UI boundary
+    /// (same pattern as CameraModel.localizedRecognitionMessage).
+    static func loadErrorMessage(for error: Error) -> String {
+        let lang = LanguageManager.shared
+        if error is URLError {
+            return lang.t("recognition.error.network")
+        }
+        return lang.t("common.loadError")
+    }
+}
+
+// MARK: - TEMPORARY compatibility shims (deleted by Tasks 10-12)
+// These keep HomeView/AnimalsView/AddAnimalView compiling until each screen is
+// rewritten. DO NOT ship: Task 14's grep step verifies they are gone.
+
+struct WeightEntry: Identifiable {
+    let id = UUID()
+    let date: Date
+    let kg: Double
+}
+
+enum AnimalStatus: String {
+    case healthy = "Healthy"
+
+    var key: String { "status.healthy" }
+    var color: Color { CarniColors.successGreen }
+}
+
+extension Animal {
+    var status: AnimalStatus { .healthy }
+    var lastScanned: Date? { nil }
+    var weights: [WeightEntry] { [] }
+    var currentWeight: Double? { nil }
+    var weightDelta: Double? { nil }
+}
+
+extension HerdStore {
+    var recentScans: [ScanEvent] { events }
+    var herdTrend: [WeightEntry] { [] }
+    var averageWeight: Double { 0 }
+    var animalsByScanUrgency: [Animal] { animals }
 
     func addAnimal(
         name: String, tag: String, breed: String, sex: AnimalSex,
         birthDate: Date, initialWeightKg: Double?, muzzleRegistered: Bool
     ) {
-        let palette: [Color] = [
-            CarniColors.purple,
-            Color(red: 70 / 255, green: 152 / 255, blue: 115 / 255),
-            Color(red: 72 / 255, green: 122 / 255, blue: 204 / 255),
-            Color(red: 222 / 255, green: 138 / 255, blue: 60 / 255),
-            Color(red: 204 / 255, green: 96 / 255, blue: 144 / 255),
-            Color(red: 52 / 255, green: 144 / 255, blue: 150 / 255),
-        ]
-        var weights: [WeightEntry] = []
-        if let kg = initialWeightKg {
-            weights.append(WeightEntry(date: Date(), kg: kg))
-        }
-        let animal = Animal(
-            name: name, tag: tag, breed: breed, sex: sex,
-            birthDate: birthDate, status: .healthy, muzzleRegistered: muzzleRegistered,
-            lastScanned: muzzleRegistered ? Date() : nil,
-            weights: weights, avatarColor: palette[animals.count % palette.count]
-        )
-        animals.insert(animal, at: 0)
+        addAnimal(id: UUID(), name: name, tag: tag, breed: breed, sex: sex, birthDate: birthDate)
     }
 
-    /// Flips the most-recently-added animal's muzzle flag to true (called when
-    /// the enrollment camera completes successfully). MVP-local only.
     func markLastAddedMuzzleRegistered() {
-        guard !animals.isEmpty else { return }
-        animals[0].muzzleRegistered = true
-        animals[0].lastScanned = Date()
-    }
-
-    // MARK: Date helpers for seed data
-
-    private static func yearsAgo(_ years: Int, months: Int) -> Date {
-        Calendar.current.date(byAdding: DateComponents(month: -(years * 12 + months)), to: Date()) ?? Date()
-    }
-
-    private static func hoursAgo(_ hours: Int) -> Date {
-        Date().addingTimeInterval(-Double(hours) * 3600)
-    }
-
-    /// Builds a monthly weigh-in series ending this month.
-    private static func monthlySeries(_ values: [Double]) -> [WeightEntry] {
-        values.enumerated().map { index, kg in
-            let monthsBack = values.count - 1 - index
-            let date = Calendar.current.date(byAdding: .month, value: -monthsBack, to: Date()) ?? Date()
-            return WeightEntry(date: date, kg: kg)
-        }
+        Task { await load() }
     }
 }

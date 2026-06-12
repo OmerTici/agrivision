@@ -86,6 +86,15 @@ final class LanguageManager: ObservableObject {
             "sex.female": "Female",
             "sex.male": "Male",
 
+            // Events (recent actions feed)
+            "event.enrolled": "%@ — enrolled",
+            "event.identified": "%@ — identified (%.2f)",
+            "event.identifiedNoScore": "%@ — identified",
+            "event.noMatch": "Unknown animal — no match",
+            "event.unknownAnimal": "Unknown animal",
+            "common.retry": "Retry",
+            "common.loadError": "Couldn't load your data.",
+
             // Animals
             "animals.title": "My Herd",
             "animals.subtitle": "%d animals · %d muzzle IDs registered",
@@ -256,6 +265,15 @@ final class LanguageManager: ObservableObject {
             "scan.noMatch": "Eşleşme Yok",
             "sex.female": "Dişi",
             "sex.male": "Erkek",
+
+            // Events (recent actions feed)
+            "event.enrolled": "%@ — kaydedildi",
+            "event.identified": "%@ — tanımlandı (%.2f)",
+            "event.identifiedNoScore": "%@ — tanımlandı",
+            "event.noMatch": "Bilinmeyen hayvan — eşleşme yok",
+            "event.unknownAnimal": "Bilinmeyen hayvan",
+            "common.retry": "Tekrar dene",
+            "common.loadError": "Verileriniz yüklenemedi.",
 
             // Animals
             "animals.title": "Sürüm",

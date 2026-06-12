@@ -316,13 +316,13 @@ private struct ScanRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AnimalAvatar(name: scan.animalName, color: scan.avatarColor, size: 44)
+            AnimalAvatar(name: scan.animalName ?? "?", color: scan.avatarColor, size: 44)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(scan.animalName)
+                Text(scan.animalName ?? lang.t("event.unknownAnimal"))
                     .font(CarniFont.semibold(15))
                     .foregroundStyle(CarniColors.purpleDark)
-                Text("\(scan.animalTag) · \(lang.timeAgo(scan.date))")
+                Text(lang.timeAgo(scan.date))
                     .font(CarniFont.regular(12))
                     .foregroundStyle(CarniColors.tabInactive)
                     .lineLimit(1)
@@ -330,12 +330,12 @@ private struct ScanRow: View {
 
             Spacer()
 
-            Label(lang.t(scan.result.key), systemImage: scan.result.icon)
+            Label(scan.title(lang), systemImage: scan.icon)
                 .font(CarniFont.semibold(11))
-                .foregroundStyle(scan.result.color)
+                .foregroundStyle(scan.color)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(scan.result.color.opacity(0.12)))
+                .background(Capsule().fill(scan.color.opacity(0.12)))
         }
         .carniCard(padding: 12)
     }
