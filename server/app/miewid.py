@@ -6,6 +6,11 @@ Per the model card: 440x440 input, ImageNet normalization, model(batch)
 returns the embedding tensor directly. Output: 2152-d, L2-normalized."""
 import numpy as np
 import torch
+
+# Cloud Run CPUs lack NNPACK support; disable it up front to silence the
+# benign "Could not initialize NNPACK" warnings on every cold start.
+torch.backends.nnpack.set_flags(False)
+
 import torchvision.transforms as T
 from transformers import AutoModel
 
