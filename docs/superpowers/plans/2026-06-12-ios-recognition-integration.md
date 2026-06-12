@@ -1656,7 +1656,7 @@ This task adds the model-side state. UI wiring is Task 14. Keep the existing cam
 **Files:**
 - Modify: `CarniVision/Views/Main/CameraView.swift`
 
-- [ ] **Step 1: Add an enrollment-mode enum and published state to CameraModel**
+- [x] **Step 1: Add an enrollment-mode enum and published state to CameraModel**
 
 In `CarniVision/Views/Main/CameraView.swift`, replace this exact block (the `Status`/`CaptureMode` enums plus the first published properties):
 
@@ -1711,7 +1711,7 @@ final class CameraModel: NSObject, ObservableObject {
     @Published var recognitionError: String?
 ```
 
-- [ ] **Step 2: Re-arm auto-capture after a collected crop so the burst continues**
+- [x] **Step 2: Re-arm auto-capture after a collected crop so the burst continues**
 
 The existing `finishSuccess(crop:readout:)` sets `captureSucceeded = true` and stops. For enrollment we instead append the crop and re-arm. Replace this exact method:
 
@@ -1772,7 +1772,7 @@ with:
 
 > `resetLiveDetectionState()` and `idleReadout` already exist on `CameraModel`. `rearmForNextEnrollCrop` runs on the main thread (called inside the `DispatchQueue.main.async` in `finishSuccess`).
 
-- [ ] **Step 3: Add enrollment configuration, full-body capture, identify, and submit methods**
+- [x] **Step 3: Add enrollment configuration, full-body capture, identify, and submit methods**
 
 In `CarniVision/Views/Main/CameraView.swift`, add these methods to `CameraModel` immediately **after** the existing `finishFailure(_:)` method (i.e., just before the closing brace of the `CameraModel` class — the line `}` on what is currently line 346, before `extension CameraModel:`):
 
@@ -1873,14 +1873,14 @@ In `CarniVision/Views/Main/CameraView.swift`, add these methods to `CameraModel`
 
 > `videoQueue`, `sessionQueue`, `photoOutput`, `captureDelegate`, `hasAutoCaptured`, `isConfigured`, `lastPhoto`, `isProcessing` are all existing private members of `CameraModel` referenced here from within the class, so this compiles. `RecognitionService`, `IdentifyResult`, `RecognitionError`, `ImageEncoding` come from Tasks 7/9/10.
 
-- [ ] **Step 4: Build to confirm the model compiles**
+- [x] **Step 4: Build to confirm the model compiles**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CarniVision/Views/Main/CameraView.swift

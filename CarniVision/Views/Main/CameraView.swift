@@ -51,6 +51,37 @@ final class CameraModel: NSObject, ObservableObject {
         case denied
     }
 
+    /// What this camera session is for.
+    enum Purpose: Equatable {
+        case identify
+        case enroll(animalID: String)
+    }
+
+    /// Phase within an enrollment session.
+    enum EnrollPhase: Equatable {
+        case collectingMuzzles   // gathering the 5-photo burst
+        case awaitingFullBody    // prompting for the single full-body shot
+        case submitting          // POST /enroll in flight
+        case done
+        case failed
+    }
+
+    /// Number of muzzle crops an enrollment requires.
+    static let enrollTarget = 5
+
+    /// nil until configured by the presenting view.
+    @Published var purpose: Purpose = .identify
+    /// Crops collected so far during an enrollment burst (main-thread only).
+    @Published var collectedCrops: [UIImage] = []
+    /// Current enrollment phase (only meaningful when purpose == .enroll).
+    @Published var enrollPhase: EnrollPhase = .collectingMuzzles
+    /// Result of the most recent identify call (nil until one returns).
+    @Published var identifyResult: IdentifyResult?
+    /// True while an identify/enroll network call is in flight.
+    @Published var isContacting = false
+    /// Network/identify error message key or text for the result card.
+    @Published var recognitionError: String?
+
     enum CaptureMode: String, CaseIterable {
         case automatic = "Automatic"
         case manual = "Manual"
@@ -327,8 +358,35 @@ final class CameraModel: NSObject, ObservableObject {
             self.isProcessing = false
             self.captureFailed = false
             self.failureMessage = ""
-            self.captureSucceeded = true
+
+            switch self.purpose {
+            case .identify:
+                self.captureSucceeded = true
+            case .enroll:
+                self.collectedCrops.append(crop)
+                if self.collectedCrops.count >= Self.enrollTarget {
+                    self.enrollPhase = .awaitingFullBody
+                    // Stay paused; the view drives the full-body capture.
+                } else {
+                    // Re-arm for the next crop in the burst.
+                    self.rearmForNextEnrollCrop()
+                }
+            }
         }
+    }
+
+    /// Clears the just-captured crop flags and re-enables auto/manual capture
+    /// so the enrollment burst can collect the next muzzle.
+    private func rearmForNextEnrollCrop() {
+        croppedMuzzle = nil
+        captureSucceeded = false
+        captureFailed = false
+        failureMessage = ""
+        countdown = nil
+        faceVisible = false
+        canManualCapture = false
+        debugReadout = Self.idleReadout
+        resetLiveDetectionState()
     }
 
     private func finishFailure(_ messageKey: String) {
@@ -342,6 +400,99 @@ final class CameraModel: NSObject, ObservableObject {
             self.canManualCapture = false
         }
         resetLiveDetectionState()
+    }
+
+    // MARK: Enrollment / identify orchestration
+
+    /// Switches the model into enrollment mode for a specific animal.
+    func beginEnrollment(animalID: String) {
+        DispatchQueue.main.async {
+            self.purpose = .enroll(animalID: animalID)
+            self.collectedCrops = []
+            self.enrollPhase = .collectingMuzzles
+            self.identifyResult = nil
+            self.recognitionError = nil
+            self.captureSucceeded = false
+            self.captureFailed = false
+        }
+        resetLiveDetectionState()
+        DispatchQueue.main.async { self.scanAgain() }
+    }
+
+    /// Captures the full-body photo for the current enrollment (uses lastPhoto).
+    func captureFullBody() {
+        // Reuse the normal capture path; processCapturedPhoto sets lastPhoto.
+        // For the full-body shot we do NOT need a muzzle crop, so capture the
+        // raw frame directly.
+        videoQueue.async { [weak self] in
+            self?.hasAutoCaptured = true
+        }
+        sessionQueue.async { [weak self] in
+            guard let self, self.isConfigured, self.session.isRunning else { return }
+            DispatchQueue.main.async { self.isProcessing = true }
+            let delegate = PhotoCaptureDelegate { [weak self] image in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    self.lastPhoto = image
+                    self.captureDelegate = nil
+                    self.isProcessing = false
+                }
+            }
+            self.captureDelegate = delegate
+            self.photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: delegate)
+        }
+    }
+
+    /// Submits the collected crops + full-body to the recognition service.
+    @MainActor
+    func submitEnrollment(using service: RecognitionService) async {
+        guard case let .enroll(animalID) = purpose else { return }
+        enrollPhase = .submitting
+        isContacting = true
+        recognitionError = nil
+        defer { isContacting = false }
+
+        let muzzleJpegs = collectedCrops.compactMap { ImageEncoding.muzzleJPEG($0) }
+        let fullJpeg = lastPhoto.flatMap { ImageEncoding.fullBodyJPEG($0) }
+        guard muzzleJpegs.count == collectedCrops.count, !muzzleJpegs.isEmpty else {
+            recognitionError = RecognitionError.encoding.localizedDescription
+            enrollPhase = .failed
+            return
+        }
+        do {
+            _ = try await service.enroll(animalID: animalID,
+                                         muzzleJpegs: muzzleJpegs,
+                                         fullJpeg: fullJpeg)
+            enrollPhase = .done
+        } catch {
+            recognitionError = error.localizedDescription
+            enrollPhase = .failed
+        }
+    }
+
+    /// Runs identify on the current crop and stores the result.
+    @MainActor
+    func runIdentify(using service: RecognitionService) async {
+        guard let crop = croppedMuzzle, let jpeg = ImageEncoding.muzzleJPEG(crop) else { return }
+        isContacting = true
+        recognitionError = nil
+        defer { isContacting = false }
+        do {
+            identifyResult = try await service.identify(jpegData: jpeg)
+        } catch {
+            recognitionError = error.localizedDescription
+        }
+    }
+
+    /// Clears identify/enroll state and re-arms for another scan.
+    func resetRecognition() {
+        DispatchQueue.main.async {
+            self.identifyResult = nil
+            self.recognitionError = nil
+            self.collectedCrops = []
+            self.enrollPhase = .collectingMuzzles
+        }
+        scanAgain()
     }
 }
 
