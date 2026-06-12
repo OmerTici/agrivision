@@ -30,6 +30,14 @@ persistence, no real auth.
   Threshold provenance: `suggested_threshold` (0.77457) in
   `cattle_id_bakeoff/results/miewid-msv3.json` — the bakeoff harness's tuned
   operating point (mean correct sim 0.88, mean wrong sim 0.67, mean margin 0.30).
+  **Amendment (2026-06-11):** threshold default changed 0.7746 → 0.60 after live
+  5-photo-enrollment testing: rank-1 was correct every time but 2/3 same-animal
+  held-out images were false-rejected at 0.7746 (measured same-animal max sims
+  0.64–0.82, cross-animal ≤ 0.52). The bakeoff's own `tpr_at_1pct_fpr` threshold
+  (0.536) supports a lower operating point. New default 0.60 sits comfortably above
+  observed cross-animal sims (≤ 0.52) and below the same-animal range. Margin
+  (0.05) unchanged as the false-accept backstop. Env-overridable via SIM_THRESHOLD
+  for further recalibration during the on-farm pilot.
 - **Enrollment depth:** ~5 images/animal is the sweet spot (~96% rank-1).
 - **Per-animal scoring:** group gallery vectors by animal, take **max** cosine.
 

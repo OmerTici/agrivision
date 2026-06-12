@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     database_url: str = ""
     storage_bucket: str = "muzzles"
 
-    # Open-set decision rule — bakeoff suggested_threshold (miewid-msv3.json)
-    sim_threshold: float = 0.7746
+    # Open-set decision rule — tuned for 5-photo enrollment (2026-06-11 recalibration;
+    # bakeoff suggested_threshold 0.7746 assumed ~15-image galleries).
+    sim_threshold: float = 0.60
     sim_margin: float = 0.05
 
     model_config = {"env_file": ".env", "extra": "ignore"}

@@ -69,12 +69,16 @@ async def test_enroll_then_identify_rank1(embedder):
                 animal_ids[name], owner, vecs, [f"test/{name}/{i}.jpg" for i in range(5)]
             )
 
-        # Held-out 6th image of each enrolled animal → identified, correct.
+        # Held-out 6th image of each enrolled animal → rank-1 correct, identified.
         for name in enrolled:
             q = embedder.embed_batch([Image.open(data[name][5])])[0]
-            d = decide(await db.match(q, owner), settings.sim_threshold, settings.sim_margin)
-            assert d.decision == "identified", f"{name}: {d}"
-            assert d.animal_id == animal_ids[name], f"{name} misidentified: {d}"
+            candidates = await db.match(q, owner)
+            assert candidates and candidates[0].animal_id == animal_ids[name], (
+                f"{name} rank-1 wrong: {candidates[:2]}"
+            )
+            d = decide(candidates, settings.sim_threshold, settings.sim_margin)
+            assert d.decision == "identified", f"{name} false-rejected: {d}"
+            assert d.animal_id == animal_ids[name]
 
         # Never-enrolled animal → unknown.
         q = embedder.embed_batch([Image.open(data[holdout][0])])[0]
