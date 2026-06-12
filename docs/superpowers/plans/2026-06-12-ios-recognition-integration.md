@@ -1496,7 +1496,7 @@ git commit -m "Add CloudRunRecognitionService with MockURLProtocol tests"
 **Files:**
 - Modify: `CarniVision/CarniVisionApp.swift`
 
-- [ ] **Step 1: Construct and inject the service, warm it up**
+- [x] **Step 1: Construct and inject the service, warm it up**
 
 Replace the entire contents of `CarniVision/CarniVisionApp.swift` (it currently holds only `auth`):
 
@@ -1534,14 +1534,14 @@ struct CarniVisionApp: App {
 
 > `CloudRunRecognitionService` is injected as a concrete `@StateObject` (not the `RecognitionService` protocol) so views can also observe its `@Published isReady`. Views that only need the protocol take it as a plain `RecognitionService` parameter (Task 13/14) sourced from this environment object.
 
-- [ ] **Step 2: Build to confirm it compiles**
+- [x] **Step 2: Build to confirm it compiles**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CarniVision/CarniVisionApp.swift
