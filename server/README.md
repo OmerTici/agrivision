@@ -12,8 +12,9 @@ pgvector matching in Supabase. Spec:
 ## One-time Supabase setup
 1. Run `sql/schema.sql` in the SQL editor.
 2. Create a **private** Storage bucket named `muzzles`.
-3. Copy `.env.example` → `.env` and fill in values (JWT secret, service-role
-   key, **transaction pooler** DSN on port 6543).
+3. Copy `.env.example` → `.env` and fill in values (service-role key,
+   **transaction pooler** DSN on port 6543). Auth uses JWKS derived from
+   SUPABASE_URL — no JWT secret needed.
 
 ## Local dev
     python3 -m venv .venv && .venv/bin/pip install torch==2.12.0 torchvision==0.27.0 --index-url https://download.pytorch.org/whl/cpu

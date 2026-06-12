@@ -6,7 +6,6 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Supabase project
     supabase_url: str = ""                # https://<ref>.supabase.co
-    supabase_jwt_secret: str = ""         # legacy HS256 secret (Dashboard > API)
     supabase_service_role_key: str = ""   # Storage uploads only
     # Supavisor TRANSACTION pooler DSN (port 6543), never direct 5432
     database_url: str = ""

@@ -141,15 +141,17 @@ create table embeddings (
 -- only if a single owner exceeds ~50k vectors.
 ```
 
-**Auth model:** The service verifies the Supabase JWT itself via the project's legacy
-**HS256 JWT secret** (decided 2026-06-11; simplest path, one env var). All verify
-logic lives in `auth.py` so that when Supabase migrates the project to asymmetric
-signing keys, the swap to JWKS verification is a one-file change. The service
-extracts the user's `uid` and passes it explicitly as the `owner` filter in
-every query (the `$2` in the matching SQL above; `owner = uid` on every insert). This is
-the single source of truth for scoping. **RLS** is still enabled on both tables
-(`owner = auth.uid()`) as defense-in-depth. Storage bucket `muzzles` is private with
-per-owner path prefixes.
+**Auth model:** The service verifies the Supabase JWT itself via the project's
+**JWKS endpoint** (ES256 asymmetric signing keys). The HS256 decision (2026-06-11)
+is superseded: the live project issues ES256 tokens (Supabase new JWT signing keys,
+header `{"alg":"ES256","kid":"803026da-..."}`); there is no HS256 secret. The service
+now verifies via `PyJWKClient` (caches keys, refreshes on unknown `kid`) pointed at
+`{SUPABASE_URL}/auth/v1/.well-known/jwks.json` — no JWT secret env needed. All verify
+logic lives in `auth.py`. The service extracts the user's `uid` and passes it
+explicitly as the `owner` filter in every query (the `$2` in the matching SQL above;
+`owner = uid` on every insert). This is the single source of truth for scoping.
+**RLS** is still enabled on both tables (`owner = auth.uid()`) as defense-in-depth.
+Storage bucket `muzzles` is private with per-owner path prefixes.
 
 ## Deployment
 
@@ -164,9 +166,9 @@ per-owner path prefixes.
 - **Postgres connections go through the Supavisor transaction-mode pooler (port
   6543)**, never direct 5432 — Cloud Run scales horizontally and direct connections
   would exhaust Supabase's connection slots. Small per-instance pool (e.g. 2–5).
-- Secrets via env: Supabase URL, **JWT secret** (verify incoming JWTs), pooled
-  Postgres connection string, service-role key (Storage uploads). `.env.example`
-  documents all.
+- Secrets via env: Supabase URL (JWKS endpoint derived from it — no JWT secret),
+  pooled Postgres connection string, service-role key (Storage uploads).
+  `.env.example` documents all.
 
 ## iOS integration (context — separate sub-project)
 
