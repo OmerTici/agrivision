@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Samper Labs — Email Templates Preview</title>
+<style>
+  :root{ --navy:#0E2A47; --blue:#1C84E0; --green:#2BC07C; --bg:#EEF2F6; --mut:#5B6B7B; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:var(--navy)}
+  header{background:#fff;border-bottom:1px solid #E1E8EF;padding:22px 28px;position:sticky;top:0;z-index:5}
+  header h1{margin:0;font-size:18px;font-weight:800;letter-spacing:-.2px}
+  header h1 b{background:linear-gradient(90deg,var(--green),var(--blue));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  header p{margin:4px 0 0;font-size:13px;color:var(--mut)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:26px;padding:28px;max-width:1500px;margin:0 auto}
+  .card{background:#fff;border:1px solid #E1E8EF;border-radius:16px;overflow:hidden;box-shadow:0 6px 22px rgba(14,42,71,.06)}
+  .card .label{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #EEF2F6}
+  .card .label b{font-size:13.5px}
+  .card .label .slot{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--blue);background:#EFF5FB;padding:3px 9px;border-radius:6px}
+  iframe{width:100%;height:760px;border:0;display:block;background:#F4F7FA}
+  .note{max-width:1500px;margin:0 auto;padding:0 28px 36px;font-size:13px;color:var(--mut);line-height:1.6}
+  .note code{font-family:ui-monospace,Menlo,monospace;background:#fff;border:1px solid #E1E8EF;padding:1px 6px;border-radius:5px}
+</style>
+</head>
+<body>
+  <header>
+    <h1><b>Samper Labs</b> — Transactional Email Templates</h1>
+    <p>Six Supabase Auth templates · brand palette pulled from samperlabs.com · the chip shows which Supabase slot each goes in.</p>
+  </header>
+
+  <div class="grid">
+    <div class="card"><div class="label"><b>Confirm sign up</b><span class="slot">Confirm sign up</span></div><iframe src="confirm-signup.html" title="Confirm sign up"></iframe></div>
+    <div class="card"><div class="label"><b>Magic link / OTP</b><span class="slot">Magic Link</span></div><iframe src="magic-link.html" title="Magic link"></iframe></div>
+    <div class="card"><div class="label"><b>Reset password</b><span class="slot">Reset Password</span></div><iframe src="reset-password.html" title="Reset password"></iframe></div>
+    <div class="card"><div class="label"><b>Invite user</b><span class="slot">Invite user</span></div><iframe src="invite.html" title="Invite user"></iframe></div>
+    <div class="card"><div class="label"><b>Change email address</b><span class="slot">Change Email</span></div><iframe src="change-email.html" title="Change email"></iframe></div>
+    <div class="card"><div class="label"><b>Reauthentication (code)</b><span class="slot">Reauthentication</span></div><iframe src="reauthentication.html" title="Reauthentication"></iframe></div>
+  </div>
+
+  <div class="note">
+    The <code>{{ .ConfirmationURL }}</code> / <code>{{ .Token }}</code> / <code>{{ .Email }}</code> placeholders render literally here — Supabase replaces them at send time.
+    The logo shows from the local file in this folder; in production it loads from <code>https://samperlabs.com/samperlabs-email-logo.png</code> (deploy the site first — see README).
+  </div>
+</body>
+</html>
