@@ -1,4 +1,3 @@
-import Charts
 import SwiftUI
 
 // MARK: - Animals list
@@ -25,7 +24,7 @@ struct AnimalsScreen: View {
     }
 
     private var filteredAnimals: [Animal] {
-        store.animalsByScanUrgency.filter { animal in
+        store.animals.filter { animal in
             let matchesFilter: Bool
             switch filter {
             case .all: matchesFilter = true
@@ -46,28 +45,40 @@ struct AnimalsScreen: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    if let error = store.loadError {
+                        LoadErrorBanner(message: error) {
+                            Task { await store.load() }
+                        }
+                    }
                     searchField
                     filterChips
 
-                    VStack(spacing: 10) {
-                        ForEach(filteredAnimals) { animal in
-                            NavigationLink {
-                                AnimalDetailView(animal: animal)
-                            } label: {
-                                AnimalCard(animal: animal)
+                    if store.isLoading && store.animals.isEmpty {
+                        loadingState
+                    } else if store.animals.isEmpty {
+                        emptyHerdState
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(filteredAnimals) { animal in
+                                NavigationLink {
+                                    AnimalDetailView(animal: animal)
+                                } label: {
+                                    AnimalCard(animal: animal)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
-                    }
 
-                    if filteredAnimals.isEmpty {
-                        emptyState
+                        if filteredAnimals.isEmpty {
+                            noResultsState
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 .padding(.bottom, CarniLayout.tabBarClearance)
             }
+            .refreshable { await store.load() }
             .background(CarniColors.appBackground)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showAddAnimal) {
@@ -77,13 +88,29 @@ struct AnimalsScreen: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(lang.t("animals.title"))
-                .font(CarniFont.bold(24))
-                .foregroundStyle(CarniColors.purpleDark)
-            Text(lang.t("animals.subtitle", store.animals.count, store.registeredCount))
-                .font(CarniFont.regular(13))
-                .foregroundStyle(CarniColors.tabInactive)
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(lang.t("animals.title"))
+                    .font(CarniFont.bold(24))
+                    .foregroundStyle(CarniColors.purpleDark)
+                Text(lang.t("animals.subtitle", store.animals.count, store.registeredCount))
+                    .font(CarniFont.regular(13))
+                    .foregroundStyle(CarniColors.tabInactive)
+            }
+            Spacer()
+            Button {
+                showAddAnimal = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(CarniColors.purple)
+                    )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -128,7 +155,31 @@ struct AnimalsScreen: View {
         }
     }
 
-    private var emptyState: some View {
+    private var loadingState: some View {
+        HStack {
+            Spacer()
+            ProgressView()
+                .tint(CarniColors.purple)
+                .padding(.top, 50)
+            Spacer()
+        }
+    }
+
+    private var emptyHerdState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "pawprint")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(CarniColors.tabInactive.opacity(0.5))
+            Text(lang.t("animals.emptyHerd"))
+                .font(CarniFont.semibold(15))
+                .foregroundStyle(CarniColors.tabInactive)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
+    }
+
+    private var noResultsState: some View {
         VStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 32, weight: .semibold))
@@ -148,7 +199,12 @@ private struct AnimalCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AnimalAvatar(name: animal.name, color: animal.avatarColor, size: 50)
+            AnimalPhotoView(
+                animalID: animal.id,
+                name: animal.name,
+                color: animal.avatarColor,
+                size: 50
+            )
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
@@ -167,31 +223,13 @@ private struct AnimalCard: View {
                 Text("\(animal.breed) · \(animal.ageDescription(lang))")
                     .font(CarniFont.regular(12))
                     .foregroundStyle(CarniColors.tabInactive)
-                Label(
-                    animal.lastScanned.map { lang.timeAgo($0) } ?? lang.t("animals.never"),
-                    systemImage: "clock.arrow.circlepath"
-                )
-                .font(CarniFont.semibold(11))
-                .foregroundStyle(scanUrgencyColor(animal.lastScanned))
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 4) {
-                if let weight = animal.currentWeight {
-                    Text(String(format: "%.0f kg", weight))
-                        .font(CarniFont.bold(16))
-                        .foregroundStyle(CarniColors.purpleDark)
-                }
-                if let delta = animal.weightDelta {
-                    Label(
-                        String(format: "%+.0f", delta),
-                        systemImage: delta >= 0 ? "arrow.up.right" : "arrow.down.right"
-                    )
-                    .font(CarniFont.semibold(11))
-                    .foregroundStyle(delta >= 0 ? CarniColors.successGreen : Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255))
-                }
-            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(CarniColors.tabInactive)
         }
         .carniCard(padding: 14)
     }
@@ -210,8 +248,6 @@ struct AnimalDetailView: View {
                 topBar
                 identityCard
                 infoGrid
-                weightChartCard
-                weightHistory
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -248,7 +284,12 @@ struct AnimalDetailView: View {
 
     private var identityCard: some View {
         HStack(spacing: 14) {
-            AnimalAvatar(name: animal.name, color: animal.avatarColor, size: 64)
+            AnimalPhotoView(
+                animalID: animal.id,
+                name: animal.name,
+                color: animal.avatarColor,
+                size: 72
+            )
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(animal.name)
@@ -257,28 +298,19 @@ struct AnimalDetailView: View {
                 Text(animal.tag)
                     .font(CarniFont.semibold(13))
                     .foregroundStyle(CarniColors.purple)
-                HStack(spacing: 6) {
-                    Text(lang.t(animal.status.key))
-                        .font(CarniFont.semibold(11))
-                        .foregroundStyle(animal.status.color)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(animal.status.color.opacity(0.12)))
-
-                    Label(
-                        lang.t(animal.muzzleRegistered ? "detail.muzzleID" : "detail.notRegistered"),
-                        systemImage: animal.muzzleRegistered ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
+                Label(
+                    lang.t(animal.muzzleRegistered ? "detail.muzzleID" : "detail.notRegistered"),
+                    systemImage: animal.muzzleRegistered ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
+                )
+                .font(CarniFont.semibold(11))
+                .foregroundStyle(animal.muzzleRegistered ? CarniColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill(
+                        (animal.muzzleRegistered ? CarniColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255)).opacity(0.12)
                     )
-                    .font(CarniFont.semibold(11))
-                    .foregroundStyle(animal.muzzleRegistered ? CarniColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule().fill(
-                            (animal.muzzleRegistered ? CarniColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255)).opacity(0.12)
-                        )
-                    )
-                }
+                )
             }
             Spacer(minLength: 0)
         }
@@ -290,127 +322,7 @@ struct AnimalDetailView: View {
             InfoTile(label: lang.t("detail.breed"), value: animal.breed)
             InfoTile(label: lang.t("detail.sex"), value: lang.t(animal.sex.key))
             InfoTile(label: lang.t("detail.age"), value: animal.ageDescription(lang))
-            InfoTile(
-                label: lang.t("detail.currentWeight"),
-                value: animal.currentWeight.map { String(format: "%.0f kg", $0) } ?? "—"
-            )
-            InfoTile(
-                label: lang.t("detail.lastScan"),
-                value: animal.lastScanned.map { lang.timeAgo($0) } ?? lang.t("animals.never")
-            )
-        }
-    }
-
-    private var weightChartCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(lang.t("detail.weightHistory"))
-                .font(CarniFont.bold(16))
-                .foregroundStyle(CarniColors.purpleDark)
-
-            if animal.weights.count >= 2 {
-                Chart(animal.weights) { entry in
-                    AreaMark(
-                        x: .value("Date", entry.date, unit: .month),
-                        y: .value("Weight", entry.kg)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [animal.avatarColor.opacity(0.25), animal.avatarColor.opacity(0.02)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-
-                    LineMark(
-                        x: .value("Date", entry.date, unit: .month),
-                        y: .value("Weight", entry.kg)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .foregroundStyle(animal.avatarColor)
-
-                    PointMark(
-                        x: .value("Date", entry.date, unit: .month),
-                        y: .value("Weight", entry.kg)
-                    )
-                    .symbolSize(36)
-                    .foregroundStyle(animal.avatarColor)
-                }
-                .chartYScale(domain: chartDomain)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .month)) {
-                        AxisValueLabel(format: .dateTime.month(.abbreviated))
-                            .font(CarniFont.regular(11))
-                            .foregroundStyle(CarniColors.tabInactive)
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading) {
-                        AxisGridLine().foregroundStyle(CarniColors.tabInactive.opacity(0.2))
-                        AxisValueLabel()
-                            .font(CarniFont.regular(11))
-                            .foregroundStyle(CarniColors.tabInactive)
-                    }
-                }
-                .frame(height: 170)
-                .clipped()
-            } else {
-                Text(lang.t("detail.notEnough"))
-                    .font(CarniFont.regular(13))
-                    .foregroundStyle(CarniColors.tabInactive)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .carniCard()
-    }
-
-    private var chartDomain: ClosedRange<Double> {
-        let values = animal.weights.map(\.kg)
-        let low = (values.min() ?? 0) - 15
-        let high = (values.max() ?? 100) + 15
-        return low...high
-    }
-
-    private var weightHistory: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(lang.t("detail.weighIns"))
-                .font(CarniFont.bold(18))
-                .foregroundStyle(CarniColors.purpleDark)
-
-            VStack(spacing: 0) {
-                let entries = Array(animal.weights.reversed())
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    HStack {
-                        Text(lang.shortDate(entry.date))
-                            .font(CarniFont.regular(14))
-                            .foregroundStyle(CarniColors.purpleDark)
-                        Spacer()
-                        if index + 1 < entries.count {
-                            let delta = entry.kg - entries[index + 1].kg
-                            Text(String(format: "%+.0f", delta))
-                                .font(CarniFont.semibold(12))
-                                .foregroundStyle(delta >= 0 ? CarniColors.successGreen : Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255))
-                                .padding(.trailing, 10)
-                        }
-                        Text(String(format: "%.0f kg", entry.kg))
-                            .font(CarniFont.semibold(14))
-                            .foregroundStyle(CarniColors.purpleDark)
-                    }
-                    .padding(.vertical, 11)
-
-                    if index < entries.count - 1 {
-                        Divider().opacity(0.5)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: CarniColors.purpleDark.opacity(0.07), radius: 12, y: 4)
-            )
+            InfoTile(label: lang.t("detail.enrolled"), value: lang.shortDate(animal.createdAt))
         }
     }
 }

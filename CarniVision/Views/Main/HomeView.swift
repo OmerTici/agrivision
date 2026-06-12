@@ -56,18 +56,6 @@ struct AnimalAvatar: View {
     }
 }
 
-// TEMPORARY shim (deleted in Task 11): the old AnimalsView still calls this
-// until its rewrite lands. Task 14's grep verifies it is gone.
-func scanUrgencyColor(_ lastScanned: Date?) -> Color {
-    guard let lastScanned else {
-        return Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255)
-    }
-    let days = Date().timeIntervalSince(lastScanned) / 86400
-    if days >= 7 { return Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255) }
-    if days >= 2 { return Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255) }
-    return CarniColors.successGreen
-}
-
 /// Async animal photo with the initials avatar as fallback. Photo lookup is
 /// owner-scoped under RLS; any failure silently degrades to the avatar.
 struct AnimalPhotoView: View {

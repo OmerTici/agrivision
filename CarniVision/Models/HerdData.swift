@@ -216,30 +216,7 @@ final class HerdStore: ObservableObject {
 // These keep HomeView/AnimalsView/AddAnimalView compiling until each screen is
 // rewritten. DO NOT ship: Task 14's grep step verifies they are gone.
 
-struct WeightEntry: Identifiable {
-    let id = UUID()
-    let date: Date
-    let kg: Double
-}
-
-enum AnimalStatus: String {
-    case healthy = "Healthy"
-
-    var key: String { "status.healthy" }
-    var color: Color { CarniColors.successGreen }
-}
-
-extension Animal {
-    var status: AnimalStatus { .healthy }
-    var lastScanned: Date? { nil }
-    var weights: [WeightEntry] { [] }
-    var currentWeight: Double? { nil }
-    var weightDelta: Double? { nil }
-}
-
 extension HerdStore {
-    var animalsByScanUrgency: [Animal] { animals }
-
     func addAnimal(
         name: String, tag: String, breed: String, sex: AnimalSex,
         birthDate: Date, initialWeightKg: Double?, muzzleRegistered: Bool
