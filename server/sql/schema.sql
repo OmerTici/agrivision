@@ -42,7 +42,7 @@ create policy "own embeddings" on embeddings
 -- (service role). Owners read their own feed from the iOS app via PostgREST.
 create table if not exists events (
   id          uuid primary key default gen_random_uuid(),
-  owner       uuid not null,
+  owner       uuid references auth.users not null,
   kind        text not null check (kind in ('enroll', 'identify')),
   animal_id   uuid references animals(id) on delete set null,  -- null for unknown identify
   result      text not null check (result in ('enrolled', 'identified', 'unknown')),
