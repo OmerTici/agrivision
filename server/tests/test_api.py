@@ -64,7 +64,7 @@ def test_enroll_batches_and_inserts(client, jpeg_bytes, monkeypatch):
     files = [("images", (f"m{i}.jpg", jpeg_bytes, "image/jpeg")) for i in range(3)]
     r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
     assert r.status_code == 200
-    assert r.json() == {"enrolled_count": 3}
+    assert r.json() == {"enrolled_count": 3, "full_images_stored": 0}
     assert np.asarray(inserted["vecs"]).shape == (3, 2152)  # one batched pass
     assert len(inserted["paths"]) == 3
 
@@ -107,3 +107,31 @@ def test_missing_auth_is_401(jpeg_bytes, monkeypatch):
     with TestClient(app, raise_server_exceptions=False) as c:
         r = c.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
     assert r.status_code == 401  # auth dependency fires before the 503 model check
+
+
+def test_enroll_with_full_images(client, jpeg_bytes, monkeypatch):
+    uploads = []
+
+    async def fake_animal_owned(animal_id, owner):
+        return True
+
+    async def fake_upload(path, data):
+        uploads.append(path)
+        return path
+
+    async def fake_insert(animal_id, owner, vecs, image_paths):
+        assert all("/muzzle/" in p for p in image_paths)
+        return len(image_paths)
+
+    monkeypatch.setattr(main_mod.db, "animal_owned", fake_animal_owned)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
+    monkeypatch.setattr(main_mod.db, "insert_embeddings", fake_insert)
+
+    files = [("images", ("m.jpg", jpeg_bytes, "image/jpeg"))] + [
+        ("full_images", (f"f{i}.jpg", jpeg_bytes, "image/jpeg")) for i in range(2)
+    ]
+    r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
+    assert r.status_code == 200
+    assert r.json() == {"enrolled_count": 1, "full_images_stored": 2}
+    assert sum("/muzzle/" in p for p in uploads) == 1
+    assert sum("/full/" in p for p in uploads) == 2

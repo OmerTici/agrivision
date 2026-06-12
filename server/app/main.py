@@ -82,23 +82,28 @@ async def identify(image: UploadFile = File(...), uid: str = Depends(current_uid
 async def enroll(
     animal_id: str = Form(...),
     images: list[UploadFile] = File(...),
+    full_images: list[UploadFile] = File(default=[]),
     uid: str = Depends(current_uid),
 ):
     if not await db.animal_owned(animal_id, uid):
         raise HTTPException(status_code=404, detail="animal not found for this user")
     raw = [await f.read() for f in images]
     pil = _decode_jpegs(raw)
-    vecs = _embed(pil)  # ONE batched forward pass for all enrollment photos
+    raw_full = [await f.read() for f in full_images]
+    _decode_jpegs(raw_full)  # validate only; full pictures are stored, never embedded
+    vecs = _embed(pil)  # ONE batched forward pass for all muzzle crops
     paths = []
     # On partial upload failure we return 502 and skip the DB insert; already-
     # uploaded objects are left as storage orphans (DB stays the source of
     # truth). Acceptable for MVP; a cleanup pass can reap them later.
     try:
         for data in raw:
-            path = storage.object_path(uid, animal_id)
+            path = storage.object_path(uid, animal_id, "muzzle")
             await storage.upload_jpeg(path, data)
             paths.append(path)
+        for data in raw_full:
+            await storage.upload_jpeg(storage.object_path(uid, animal_id, "full"), data)
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="image storage upload failed")
     count = await db.insert_embeddings(animal_id, uid, vecs, paths)
-    return EnrollResponse(enrolled_count=count)
+    return EnrollResponse(enrolled_count=count, full_images_stored=len(raw_full))

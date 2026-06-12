@@ -80,11 +80,15 @@ request. `/healthz` returns ready state and is used by the app to warm cold star
   Flow: verify JWT → embed → pgvector query (RLS-scoped to user) → group by animal,
   max sim → apply decision rule → return
   `{decision: "identified"|"unknown", animal_id?, name?, score, margin, candidates[]}`.
-- `POST /enroll` — multipart: one or more muzzle JPEGs + `animal_id`; JWT header.
-  Flow: verify JWT → **embed all images in one batched forward pass** (CPU embeds
-  run ~1–3 s each; batching turns a 5-photo enroll from ~10 s into ~3–4 s) →
-  upload images to Supabase Storage → insert `embeddings` rows →
-  return `{enrolled_count}`.
+- `POST /enroll` — multipart: one or more muzzle JPEGs + `animal_id` (required) and
+  optional `full_images[]` (full-body/face shots); JWT header.
+  Flow: verify JWT → **embed all muzzle images in one batched forward pass** (CPU
+  embeds run ~1–3 s each; batching turns a 5-photo enroll from ~10 s into ~3–4 s) →
+  upload muzzle crops to `{owner}/{animal_id}/muzzle/` in Supabase Storage →
+  upload full pictures (validated JPEG, never embedded, not inserted into the DB;
+  app lists them by prefix) to `{owner}/{animal_id}/full/` →
+  insert `embeddings` rows (muzzle paths only) →
+  return `{enrolled_count, full_images_stored}`.
 
 Errors: invalid/missing JWT → 401; no animal_id on enroll → 422; embedding failure →
 500 with a clear message; empty gallery on identify → `decision: "unknown"`.

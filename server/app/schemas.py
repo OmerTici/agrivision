@@ -23,3 +23,4 @@ class IdentifyResponse(BaseModel):
 
 class EnrollResponse(BaseModel):
     enrolled_count: int
+    full_images_stored: int = 0
