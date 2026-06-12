@@ -2,14 +2,28 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSCameraUsageDescription</key>
-	<string>Carni_vision uses the camera to scan and identify animals.</string>
-	<key>SUPABASE_URL</key>
-	<string>https://xznmsmweefckkqjfepqs.supabase.co</string>
-	<key>SUPABASE_ANON_KEY</key>
-	<string>sb_publishable_wht-ngrP9m0FNqq3K4eGUQ_hxbSsZkc</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<!-- Stable, team-wide OAuth callback scheme. Independent of the
+			     per-developer bundle id so it works on every machine.
+			     Redirect URL: carnivision://auth-callback -->
+			<key>CFBundleURLName</key>
+			<string>carnivision</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>carnivision</string>
+			</array>
+		</dict>
+	</array>
 	<key>EMBEDDER_URL</key>
 	<string>https://carnivision-embedder-78377568014.europe-west1.run.app</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>sb_publishable_wht-ngrP9m0FNqq3K4eGUQ_hxbSsZkc</string>
+	<key>SUPABASE_URL</key>
+	<string>https://xznmsmweefckkqjfepqs.supabase.co</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Lato-Regular.ttf</string>

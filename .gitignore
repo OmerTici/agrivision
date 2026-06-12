@@ -8,6 +8,8 @@ build/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 *.xcuserstate
+# Per-developer signing (team + bundle id); each dev keeps their own.
+*.local.xcconfig
 server/.venv/
 server/.env
 __pycache__/
