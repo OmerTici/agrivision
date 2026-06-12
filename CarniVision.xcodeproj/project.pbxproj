@@ -50,6 +50,8 @@
 		A10000000000000000000036 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* AuthService.swift */; };
 		A10000000000000000000037 /* RecognitionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000028 /* RecognitionModels.swift */; };
 		A10000000000000000000038 /* MultipartFormData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000029 /* MultipartFormData.swift */; };
+		A10000000000000000000039 /* ImageEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002A /* ImageEncoding.swift */; };
+		A1000000000000000000003A /* RecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002B /* RecognitionService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -103,6 +105,8 @@
 		B10000000000000000000027 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		B10000000000000000000028 /* RecognitionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionModels.swift; sourceTree = "<group>"; };
 		B10000000000000000000029 /* MultipartFormData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultipartFormData.swift; sourceTree = "<group>"; };
+		B1000000000000000000002A /* ImageEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageEncoding.swift; sourceTree = "<group>"; };
+		B1000000000000000000002B /* RecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -264,6 +268,8 @@
 				B10000000000000000000027 /* AuthService.swift */,
 				B10000000000000000000028 /* RecognitionModels.swift */,
 				B10000000000000000000029 /* MultipartFormData.swift */,
+				B1000000000000000000002A /* ImageEncoding.swift */,
+				B1000000000000000000002B /* RecognitionService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -418,6 +424,8 @@
 				A10000000000000000000036 /* AuthService.swift in Sources */,
 				A10000000000000000000037 /* RecognitionModels.swift in Sources */,
 				A10000000000000000000038 /* MultipartFormData.swift in Sources */,
+				A10000000000000000000039 /* ImageEncoding.swift in Sources */,
+				A1000000000000000000003A /* RecognitionService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
