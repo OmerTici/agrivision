@@ -2667,14 +2667,14 @@ Any preview that renders `RootView`, `LandingView`, `SignInForm`, `SignUpForm`, 
 **Files:**
 - Modify: any `#Preview` blocks that fail to compile after the wiring (search first).
 
-- [ ] **Step 1: Find previews that need injection**
+- [x] **Step 1: Find previews that need injection**
 
 ```bash
 grep -rln "#Preview\|PreviewProvider" CarniVision/Views/
 ```
 Expected: a list of files. For each that renders one of the views above, add the environment objects.
 
-- [ ] **Step 2: Add a preview helper for the recognition environment**
+- [x] **Step 2: Add a preview helper for the recognition environment**
 
 If a preview renders `CameraScreen`, it needs a `CloudRunRecognitionService` in the environment (the concrete type used by `@EnvironmentObject`). Add this preview-only factory once, e.g. at the bottom of `CarniVision/Views/Main/CameraView.swift`:
 
@@ -2695,7 +2695,7 @@ extension CloudRunRecognitionService {
 #endif
 ```
 
-- [ ] **Step 3: Inject into each failing preview**
+- [x] **Step 3: Inject into each failing preview**
 
 For each preview that renders an auth/camera view, wrap it, for example:
 
@@ -2717,14 +2717,14 @@ and for auth/root previews:
 
 > Only edit previews that actually exist and fail to build; do not invent new preview blocks.
 
-- [ ] **Step 4: Build (Debug) to confirm previews compile**
+- [x] **Step 4: Build (Debug) to confirm previews compile**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CarniVision/Views
@@ -2737,21 +2737,21 @@ git commit -m "Inject mock services into SwiftUI previews"
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Run the whole test suite**
+- [x] **Step 1: Run the whole test suite**
 
 ```bash
 xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -25
 ```
 Expected: `** TEST SUCCEEDED **` with `AuthServiceTests` (3), `MultipartFormDataTests` (5), `RecognitionDecodingTests` (4) all passing.
 
-- [ ] **Step 2: Confirm a clean release build**
+- [x] **Step 2: Confirm a clean release build**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -configuration Release -destination 'generic/platform=iOS' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`. (This is the build that goes to the phone.)
 
-- [ ] **Step 3: Commit (if any incidental fixes were needed)**
+- [x] **Step 3: Commit (if any incidental fixes were needed)**
 
 ```bash
 git add -A
