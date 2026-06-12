@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 import os
@@ -57,9 +58,12 @@ async def _record_event(
     owner: str, kind: str, animal_id: str | None, result: str, score: float | None
 ) -> None:
     """Best-effort event-feed write: an insert failure must never fail the
-    API response — log and continue."""
+    API response — log and continue. Capped at 5s so a degraded pool can't
+    stall the response while the insert waits on a connection."""
     try:
-        await db.insert_event(owner, kind, animal_id, result, score)
+        await asyncio.wait_for(
+            db.insert_event(owner, kind, animal_id, result, score), timeout=5.0
+        )
     except Exception:
         logger.exception("event insert failed (kind=%s, result=%s)", kind, result)
 
