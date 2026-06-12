@@ -202,6 +202,11 @@ final class LanguageManager: ObservableObject {
             "auth.sendReset": "Send Reset Link",
             "auth.remember": "Remember your password?",
             "auth.backToLogin": "Back to login",
+            "auth.error.generic": "Something went wrong. Please try again.",
+            "auth.signingIn": "Signing in…",
+            "auth.signingUp": "Creating account…",
+            "auth.mismatch": "Passwords do not match.",
+            "auth.confirmEmail": "Check your email to confirm your account.",
         ],
         .turkish: [
             // Home
@@ -349,6 +354,11 @@ final class LanguageManager: ObservableObject {
             "auth.sendReset": "Sıfırlama Bağlantısı Gönder",
             "auth.remember": "Şifrenizi hatırladınız mı?",
             "auth.backToLogin": "Girişe dön",
+            "auth.error.generic": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+            "auth.signingIn": "Giriş yapılıyor…",
+            "auth.signingUp": "Hesap oluşturuluyor…",
+            "auth.mismatch": "Şifreler eşleşmiyor.",
+            "auth.confirmEmail": "Hesabınızı onaylamak için e-postanızı kontrol edin.",
         ],
     ]
 }

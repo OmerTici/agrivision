@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Supabase
 
 /// Minimal identity surface the app needs from the auth backend.
@@ -38,7 +39,7 @@ struct SupabaseAuthBackend: AuthBackend {
         guard let session = response.session else {
             // Email-confirmation projects return no session until confirmed.
             throw NSError(domain: "auth", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Check your email to confirm your account."
+                NSLocalizedDescriptionKey: LanguageManager.shared.t("auth.confirmEmail")
             ])
         }
         return AuthIdentity(userID: session.user.id.uuidString, accessToken: session.accessToken)
