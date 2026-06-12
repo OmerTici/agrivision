@@ -50,9 +50,10 @@ struct AddAnimalScreen: View {
         .fullScreenCover(item: $enrollAnimalID) { animalID in
             CameraScreen(
                 onClose: {
-                    // Mark local registration on success path completion.
-                    store.markLastAddedMuzzleRegistered()
                     enrollAnimalID = nil
+                },
+                onEnrollSuccess: {
+                    store.markLastAddedMuzzleRegistered()
                 },
                 enrollAnimalID: animalID
             )
@@ -257,18 +258,18 @@ struct AddAnimalScreen: View {
                     sex: sex,
                     birthDate: birthDate
                 )
-                // Keep the in-memory herd list in sync (muzzleRegistered flips
-                // to true only after a successful enroll — see markLast…).
-                store.addAnimal(
-                    name: trimmedName,
-                    tag: trimmedTag,
-                    breed: breed,
-                    sex: sex,
-                    birthDate: birthDate,
-                    initialWeightKg: Double(weightText.replacingOccurrences(of: ",", with: ".")),
-                    muzzleRegistered: false
-                )
                 await MainActor.run {
+                    // Keep the in-memory herd list in sync (muzzleRegistered flips
+                    // to true only after a successful enroll — see markLast…).
+                    store.addAnimal(
+                        name: trimmedName,
+                        tag: trimmedTag,
+                        breed: breed,
+                        sex: sex,
+                        birthDate: birthDate,
+                        initialWeightKg: Double(weightText.replacingOccurrences(of: ",", with: ".")),
+                        muzzleRegistered: false
+                    )
                     isSaving = false
                     name = ""
                     tag = ""

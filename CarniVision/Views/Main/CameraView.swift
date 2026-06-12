@@ -667,6 +667,8 @@ struct CameraPreviewView: UIViewRepresentable {
 
 struct CameraScreen: View {
     var onClose: () -> Void = {}
+    /// Called after a successful enrollment (`.done` state). Fires before `onClose`.
+    var onEnrollSuccess: () -> Void = {}
     /// When set, the camera runs an enrollment session for this animal.
     var enrollAnimalID: String? = nil
     /// Called when an unknown identify result's "Enroll" button is tapped.
@@ -1055,6 +1057,7 @@ struct CameraScreen: View {
                         // doesn't hold 6 full-res UIImages after a successful enrollment.
                         model.collectedCrops = []
                         model.lastPhoto = nil
+                        onEnrollSuccess()
                         onClose()
                     } label: {
                         Text(lang.t("camera.done"))
