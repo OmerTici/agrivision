@@ -60,7 +60,6 @@ final class CameraModel: NSObject, ObservableObject {
     /// Phase within an enrollment session.
     enum EnrollPhase: Equatable {
         case collectingMuzzles   // gathering the 5-photo burst
-        case awaitingFullBody    // prompting for the single full-body shot
         case submitting          // POST /enroll in flight
         case done
         case failed
@@ -79,9 +78,13 @@ final class CameraModel: NSObject, ObservableObject {
     @Published var identifyResult: IdentifyResult?
     /// True while an identify/enroll network call is in flight.
     @Published var isContacting = false
-    /// Set to true (on main) once lastPhoto is populated by captureFullBody().
+    /// Set to true (on main) once the enrollment burst is complete (5 crops collected).
     /// The view observes this flag to trigger submitEnrollment and resets it after consuming.
-    @Published var fullBodyReady = false
+    @Published var readyToSubmit = false
+    /// The uncropped parent frame of the highest-confidence muzzle crop in the
+    /// current burst — uploaded as the animal's "full" photo so it always shows
+    /// the exact frame the on-device pipeline processed (main-thread only).
+    private var enrollFullFrame: (confidence: Float, image: UIImage)?
     /// Network/identify error message key or text for the result card.
     @Published var recognitionError: String?
 
@@ -351,11 +354,11 @@ final class CameraModel: NSObject, ObservableObject {
                 box.width * 100,
                 box.height * 100
             )
-            self.finishSuccess(crop: crop, readout: readout)
+            self.finishSuccess(crop: crop, fullFrame: image, confidence: best.confidence, readout: readout)
         }
     }
 
-    private func finishSuccess(crop: UIImage, readout: String) {
+    private func finishSuccess(crop: UIImage, fullFrame: UIImage?, confidence: Float, readout: String) {
         DispatchQueue.main.async {
             self.croppedMuzzle = crop
             self.debugReadout = readout
@@ -368,9 +371,12 @@ final class CameraModel: NSObject, ObservableObject {
                 self.captureSucceeded = true
             case .enroll:
                 self.collectedCrops.append(crop)
+                if let fullFrame, confidence > (self.enrollFullFrame?.confidence ?? 0) {
+                    self.enrollFullFrame = (confidence, fullFrame)
+                }
                 if self.collectedCrops.count >= Self.enrollTarget {
-                    self.enrollPhase = .awaitingFullBody
-                    // Stay paused; the view drives the full-body capture.
+                    // Burst complete — stay paused; the view triggers submission.
+                    self.readyToSubmit = true
                 } else {
                     // Re-arm for the next crop in the burst.
                     self.rearmForNextEnrollCrop()
@@ -413,6 +419,7 @@ final class CameraModel: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.purpose = .enroll(animalID: animalID)
             self.collectedCrops = []
+            self.enrollFullFrame = nil
             self.enrollPhase = .collectingMuzzles
             self.identifyResult = nil
             self.recognitionError = nil
@@ -421,32 +428,6 @@ final class CameraModel: NSObject, ObservableObject {
         }
         resetLiveDetectionState()
         DispatchQueue.main.async { self.scanAgain() }
-    }
-
-    /// Captures the full-body photo for the current enrollment (uses lastPhoto).
-    func captureFullBody() {
-        // Reuse the normal capture path; processCapturedPhoto sets lastPhoto.
-        // For the full-body shot we do NOT need a muzzle crop, so capture the
-        // raw frame directly.
-        videoQueue.async { [weak self] in
-            self?.hasAutoCaptured = true
-        }
-        sessionQueue.async { [weak self] in
-            guard let self, self.isConfigured, self.session.isRunning else { return }
-            DispatchQueue.main.async { self.isProcessing = true }
-            let delegate = PhotoCaptureDelegate { [weak self] image in
-                guard let self else { return }
-                DispatchQueue.main.async {
-                    self.lastPhoto = image
-                    self.captureDelegate = nil
-                    self.isProcessing = false
-                    // Signal the view that the full-body frame is ready for submission.
-                    self.fullBodyReady = true
-                }
-            }
-            self.captureDelegate = delegate
-            self.photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: delegate)
-        }
     }
 
     /// Submits the collected crops + full-body to the recognition service.
@@ -459,7 +440,7 @@ final class CameraModel: NSObject, ObservableObject {
         defer { isContacting = false }
 
         let muzzleJpegs = collectedCrops.compactMap { ImageEncoding.muzzleJPEG($0) }
-        let fullJpeg = lastPhoto.flatMap { ImageEncoding.fullBodyJPEG($0) }
+        let fullJpeg = enrollFullFrame.flatMap { ImageEncoding.fullBodyJPEG($0.image) }
         guard muzzleJpegs.count == collectedCrops.count, !muzzleJpegs.isEmpty else {
             recognitionError = Self.localizedRecognitionMessage(for: RecognitionError.encoding)
             enrollPhase = .failed
@@ -510,12 +491,21 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
+    /// Releases captured images after a completed enrollment so the model
+    /// doesn't hold full-res UIImages once the session is over.
+    func releaseCapturedImages() {
+        collectedCrops = []
+        enrollFullFrame = nil
+        lastPhoto = nil
+    }
+
     /// Clears identify/enroll state and re-arms for another scan.
     func resetRecognition() {
         DispatchQueue.main.async {
             self.identifyResult = nil
             self.recognitionError = nil
             self.collectedCrops = []
+            self.enrollFullFrame = nil
             self.enrollPhase = .collectingMuzzles
         }
         scanAgain()
@@ -795,16 +785,10 @@ struct CameraScreen: View {
                 generator.notificationOccurred(.error)
             }
         }
-        .onChange(of: model.enrollPhase) { _, phase in
-            if phase == .awaitingFullBody {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.warning)
-            }
-        }
-        .onChange(of: model.fullBodyReady) { _, ready in
+        .onChange(of: model.readyToSubmit) { _, ready in
             guard ready else { return }
-            // Consume the flag immediately so this fires exactly once per capture.
-            model.fullBodyReady = false
+            // Consume the flag immediately so this fires exactly once per burst.
+            model.readyToSubmit = false
             Task { await model.submitEnrollment(using: recognition) }
         }
         .sheet(isPresented: $showHelp) {
@@ -1031,31 +1015,6 @@ struct CameraScreen: View {
             }
             .allowsHitTesting(false)
 
-        case .awaitingFullBody:
-            VStack(spacing: 16) {
-                Spacer()
-                Text(lang.t("camera.enroll.fullPrompt"))
-                    .font(CarniFont.semibold(17))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .shadow(color: .black.opacity(0.5), radius: 4)
-                Button {
-                    model.captureFullBody()
-                    // Submission is triggered event-driven via .onChange(of: model.fullBodyReady).
-                } label: {
-                    Text(lang.t("camera.enroll.captureFull"))
-                        .font(CarniFont.semibold(16))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(CarniColors.purple)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 40)
-                .padding(.bottom, 60)
-            }
-
         case .submitting:
             recognitionScrim {
                 VStack(spacing: 12) {
@@ -1073,10 +1032,7 @@ struct CameraScreen: View {
                     Text(lang.t("camera.enroll.success"))
                         .font(CarniFont.bold(20)).foregroundStyle(.white)
                     Button {
-                        // Release captured images before closing so the model
-                        // doesn't hold 6 full-res UIImages after a successful enrollment.
-                        model.collectedCrops = []
-                        model.lastPhoto = nil
+                        model.releaseCapturedImages()
                         onEnrollSuccess()
                         onClose()
                     } label: {
