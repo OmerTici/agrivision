@@ -1895,7 +1895,7 @@ git commit -m "Add enrollment session and identify orchestration to CameraModel"
 - Modify: `CarniVision/Views/Main/CameraView.swift`
 - Modify: `CarniVision/Models/Localization.swift`
 
-- [ ] **Step 1: Add camera/recognition localization strings (EN)**
+- [x] **Step 1: Add camera/recognition localization strings (EN)**
 
 In `CarniVision/Models/Localization.swift`, in the `.english` dictionary, replace this exact line:
 
@@ -1923,7 +1923,7 @@ with:
             "camera.identify.retry": "Try again",
 ```
 
-- [ ] **Step 2: Add camera/recognition localization strings (TR)**
+- [x] **Step 2: Add camera/recognition localization strings (TR)**
 
 In the `.turkish` dictionary, replace this exact line:
 
@@ -1953,7 +1953,7 @@ with:
 
 > `%%%.0f` in Turkish renders a literal `%` then the number (e.g. `%92`); `%.0f%%` in English renders `92%`. Both pass one `Double` arg.
 
-- [ ] **Step 3: Give CameraScreen a purpose + injected service, and identify after capture**
+- [x] **Step 3: Give CameraScreen a purpose + injected service, and identify after capture**
 
 In `CarniVision/Views/Main/CameraView.swift`, replace this exact block:
 
@@ -1986,7 +1986,7 @@ struct CameraScreen: View {
     @State private var showResult = false
 ```
 
-- [ ] **Step 4: Configure the model on appear and react to a successful capture**
+- [x] **Step 4: Configure the model on appear and react to a successful capture**
 
 Replace this exact block (the `.onAppear`/`.onDisappear`/`.onChange` chain):
 
@@ -2040,7 +2040,7 @@ with:
         }
 ```
 
-- [ ] **Step 5: Add the enrollment + identify overlays to the ZStack**
+- [x] **Step 5: Add the enrollment + identify overlays to the ZStack**
 
 Replace this exact block (the tail of the main `ZStack`, where the result overlay is shown):
 
@@ -2076,7 +2076,7 @@ with:
         }
 ```
 
-- [ ] **Step 6: Add the overlay view builders**
+- [x] **Step 6: Add the overlay view builders**
 
 In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `CameraScreen` immediately **after** the existing `resultOverlay` computed property (before `private func capture()`):
 
@@ -2255,14 +2255,14 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
 
 > All referenced symbols exist: `CarniColors`, `CarniFont`, `lang.t(_:)` and `lang.t(_:_:)` (variadic), `model.identifyResult`, `model.recognitionError`, `model.enrollPhase`, `model.collectedCrops`, `CameraModel.enrollTarget`, `model.isReady` is on the injected `recognition` (a `CloudRunRecognitionService`), `model.captureFullBody()`, `model.submitEnrollment(using:)`, `model.runIdentify(using:)`, `model.resetRecognition()`.
 
-- [ ] **Step 7: Build to confirm UI compiles**
+- [x] **Step 7: Build to confirm UI compiles**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add CarniVision/Views/Main/CameraView.swift CarniVision/Models/Localization.swift

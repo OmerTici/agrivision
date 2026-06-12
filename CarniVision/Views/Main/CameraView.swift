@@ -661,7 +661,12 @@ struct CameraPreviewView: UIViewRepresentable {
 
 struct CameraScreen: View {
     var onClose: () -> Void = {}
+    /// When set, the camera runs an enrollment session for this animal.
+    var enrollAnimalID: String? = nil
+    /// Called when an unknown identify result's "Enroll" button is tapped.
+    var onRequestEnroll: () -> Void = {}
 
+    @EnvironmentObject private var recognition: CloudRunRecognitionService
     @StateObject private var model = CameraModel()
     @ObservedObject private var lang = LanguageManager.shared
     @State private var flash = false
@@ -727,19 +732,45 @@ struct CameraScreen: View {
             if model.showsResultOverlay {
                 resultOverlay
             }
+
+            if enrollAnimalID != nil {
+                enrollmentOverlay
+            }
+
+            if enrollAnimalID == nil, model.identifyResult != nil || model.recognitionError != nil {
+                identifyOverlay
+            }
+
+            if !recognition.isReady {
+                wakingBanner
+            }
         }
-        .onAppear { model.start() }
+        .onAppear {
+            model.start()
+            if let id = enrollAnimalID {
+                model.beginEnrollment(animalID: id)
+            }
+        }
         .onDisappear { model.stop() }
         .onChange(of: model.captureSucceeded) { _, succeeded in
-            if succeeded {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.success)
+            guard succeeded else { return }
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+            // Identify mode: as soon as a crop is captured, ask the server.
+            if enrollAnimalID == nil {
+                Task { await model.runIdentify(using: recognition) }
             }
         }
         .onChange(of: model.captureFailed) { _, failed in
             if failed {
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.error)
+            }
+        }
+        .onChange(of: model.enrollPhase) { _, phase in
+            if phase == .awaitingFullBody {
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.warning)
             }
         }
         .sheet(isPresented: $showHelp) {
@@ -946,6 +977,177 @@ struct CameraScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.55).ignoresSafeArea())
+        .transition(.opacity)
+    }
+
+    // MARK: Enrollment overlay
+
+    @ViewBuilder
+    private var enrollmentOverlay: some View {
+        switch model.enrollPhase {
+        case .collectingMuzzles:
+            VStack {
+                Spacer()
+                Text(lang.t("camera.enroll.progress", model.collectedCrops.count, CameraModel.enrollTarget))
+                    .font(CarniFont.semibold(16))
+                    .foregroundStyle(.white)
+                    .padding(.vertical, 8).padding(.horizontal, 16)
+                    .background(Capsule().fill(CarniColors.purple.opacity(0.85)))
+                    .padding(.bottom, 160)
+            }
+            .allowsHitTesting(false)
+
+        case .awaitingFullBody:
+            VStack(spacing: 16) {
+                Spacer()
+                Text(lang.t("camera.enroll.fullPrompt"))
+                    .font(CarniFont.semibold(17))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .shadow(color: .black.opacity(0.5), radius: 4)
+                Button {
+                    model.captureFullBody()
+                    Task {
+                        // Give the capture a beat to set lastPhoto, then submit.
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        await model.submitEnrollment(using: recognition)
+                    }
+                } label: {
+                    Text(lang.t("camera.enroll.captureFull"))
+                        .font(CarniFont.semibold(16))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(CarniColors.purple)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 40)
+                .padding(.bottom, 60)
+            }
+
+        case .submitting:
+            recognitionScrim {
+                VStack(spacing: 12) {
+                    ProgressView().tint(.white)
+                    Text(lang.t("camera.enroll.submitting"))
+                        .font(CarniFont.semibold(16)).foregroundStyle(.white)
+                }
+            }
+
+        case .done:
+            recognitionScrim {
+                VStack(spacing: 16) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 54)).foregroundStyle(CarniColors.successGreen)
+                    Text(lang.t("camera.enroll.success"))
+                        .font(CarniFont.bold(20)).foregroundStyle(.white)
+                    Button { onClose() } label: {
+                        Text(lang.t("camera.done"))
+                            .font(CarniFont.semibold(16)).foregroundStyle(CarniColors.purple)
+                            .padding(.vertical, 12).padding(.horizontal, 40)
+                            .background(CarniColors.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+        case .failed:
+            recognitionScrim {
+                VStack(spacing: 16) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 54)).foregroundStyle(.red)
+                    Text(lang.t("camera.enroll.failed"))
+                        .font(CarniFont.bold(20)).foregroundStyle(.white)
+                    if let err = model.recognitionError {
+                        Text(err).font(CarniFont.regular(13)).foregroundStyle(.white.opacity(0.85))
+                            .multilineTextAlignment(.center).padding(.horizontal, 24)
+                    }
+                    Button {
+                        Task { await model.submitEnrollment(using: recognition) }
+                    } label: {
+                        Text(lang.t("camera.enroll.retry"))
+                            .font(CarniFont.semibold(16)).foregroundStyle(CarniColors.purple)
+                            .padding(.vertical, 12).padding(.horizontal, 40)
+                            .background(CarniColors.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // MARK: Identify overlay
+
+    @ViewBuilder
+    private var identifyOverlay: some View {
+        recognitionScrim {
+            VStack(spacing: 16) {
+                if let result = model.identifyResult {
+                    if result.isIdentified {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 50)).foregroundStyle(CarniColors.successGreen)
+                        Text(result.name ?? lang.t("camera.identify.identified"))
+                            .font(CarniFont.bold(22)).foregroundStyle(.white)
+                        Text(lang.t("camera.identify.score", result.score * 100))
+                            .font(CarniFont.regular(15)).foregroundStyle(.white.opacity(0.85))
+                    } else {
+                        Image(systemName: "questionmark.circle.fill")
+                            .font(.system(size: 50)).foregroundStyle(.orange)
+                        Text(lang.t("camera.identify.unknown"))
+                            .font(CarniFont.bold(20)).foregroundStyle(.white)
+                        Button { onRequestEnroll() } label: {
+                            Text(lang.t("camera.identify.enroll"))
+                                .font(CarniFont.semibold(16)).foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13).background(CarniColors.purple)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain).padding(.horizontal, 24)
+                    }
+                } else if model.recognitionError != nil {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 44)).foregroundStyle(.white)
+                    Text(lang.t("camera.identify.offline"))
+                        .font(CarniFont.semibold(16)).foregroundStyle(.white)
+                }
+
+                Button { model.resetRecognition() } label: {
+                    Text(lang.t("camera.scanAgain"))
+                        .font(CarniFont.semibold(15)).foregroundStyle(.white.opacity(0.9))
+                        .padding(.vertical, 10).padding(.horizontal, 30)
+                        .overlay(Capsule().stroke(.white.opacity(0.5), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var wakingBanner: some View {
+        VStack {
+            HStack(spacing: 8) {
+                ProgressView().tint(.white).scaleEffect(0.8)
+                Text(lang.t("camera.identify.waking"))
+                    .font(CarniFont.semibold(13)).foregroundStyle(.white)
+            }
+            .padding(.vertical, 8).padding(.horizontal, 14)
+            .background(Capsule().fill(Color.black.opacity(0.6)))
+            .padding(.top, 70)
+            Spacer()
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Dim background wrapper shared by the recognition overlays.
+    @ViewBuilder
+    private func recognitionScrim<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            content()
+                .padding(24)
+        }
         .transition(.opacity)
     }
 
