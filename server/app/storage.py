@@ -26,8 +26,10 @@ async def upload_jpeg(path: str, data: bytes) -> str:
         resp = await client.post(
             url,
             content=data,
+            # New-style sb_secret_ keys need BOTH headers; Bearer alone is rejected ("Invalid Compact JWS").
             headers={
                 "Authorization": f"Bearer {s.supabase_service_role_key}",
+                "apikey": s.supabase_service_role_key,
                 "Content-Type": "image/jpeg",
             },
         )
