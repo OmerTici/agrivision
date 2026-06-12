@@ -48,6 +48,7 @@
 		A10000000000000000000034 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* AppConfig.swift */; };
 		A10000000000000000000035 /* SupabaseClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* SupabaseClientProvider.swift */; };
 		A10000000000000000000036 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* AuthService.swift */; };
+		A10000000000000000000037 /* RecognitionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000028 /* RecognitionModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +100,7 @@
 		B10000000000000000000025 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		B10000000000000000000026 /* SupabaseClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientProvider.swift; sourceTree = "<group>"; };
 		B10000000000000000000027 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		B10000000000000000000028 /* RecognitionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -258,6 +260,7 @@
 			children = (
 				B10000000000000000000026 /* SupabaseClientProvider.swift */,
 				B10000000000000000000027 /* AuthService.swift */,
+				B10000000000000000000028 /* RecognitionModels.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -410,6 +413,7 @@
 				A10000000000000000000034 /* AppConfig.swift in Sources */,
 				A10000000000000000000035 /* SupabaseClientProvider.swift in Sources */,
 				A10000000000000000000036 /* AuthService.swift in Sources */,
+				A10000000000000000000037 /* RecognitionModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
