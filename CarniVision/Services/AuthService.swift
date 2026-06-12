@@ -18,12 +18,17 @@ protocol AuthBackend {
     /// Emits identity updates as the SDK's session changes (refresh / sign-in / sign-out).
     /// `nil` means the user is now signed out. Default: an empty stream (no updates).
     func identityUpdates() -> AsyncStream<AuthIdentity?>
+    /// Completes a sign-in from a deep link (email confirmation / magic link).
+    /// Returns the new identity, or nil if the URL carried no auth payload.
+    func handleOpenURL(_ url: URL) async throws -> AuthIdentity?
 }
 
 extension AuthBackend {
     func identityUpdates() -> AsyncStream<AuthIdentity?> {
         AsyncStream { $0.finish() }
     }
+
+    func handleOpenURL(_ url: URL) async throws -> AuthIdentity? { nil }
 }
 
 /// Production backend backed by the real SupabaseClient.
@@ -56,6 +61,14 @@ struct SupabaseAuthBackend: AuthBackend {
 
     func signOut() async throws {
         try await client.auth.signOut()
+    }
+
+    /// Exchanges the deep link's auth payload (PKCE `code`) for a session. The
+    /// authStateChanges stream then emits `.signedIn`, but we also return the
+    /// identity so the caller can update the UI immediately.
+    func handleOpenURL(_ url: URL) async throws -> AuthIdentity? {
+        let session = try await client.auth.session(from: url)
+        return identity(from: session)
     }
 
     func restoreSession() async -> AuthIdentity? {
@@ -125,6 +138,20 @@ final class AuthService: ObservableObject {
             for await identity in updates {
                 self?.identity = identity
             }
+        }
+    }
+
+    /// Entry point for `onOpenURL`: finishes a deep-link sign-in (email
+    /// confirmation / magic link). On success the user lands signed-in without
+    /// retyping credentials. Ignores non-auth URLs (handleOpenURL returns nil).
+    func handleDeepLink(_ url: URL) async {
+        errorMessage = nil
+        do {
+            if let restored = try await backend.handleOpenURL(url) {
+                identity = restored
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

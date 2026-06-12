@@ -21,6 +21,10 @@ struct CarniVisionApp: App {
             RootView()
                 .environmentObject(auth)
                 .environmentObject(recognition)
+                .onOpenURL { url in
+                    // Email-confirmation / magic-link deep link → finish sign-in.
+                    Task { await auth.handleDeepLink(url) }
+                }
                 .task {
                     await auth.bootstrap()
                     await recognition.warmUp()
