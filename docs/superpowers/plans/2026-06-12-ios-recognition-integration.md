@@ -266,7 +266,7 @@ We test the observable transitions behind a small protocol so tests do not hit t
 - Create: `CarniVision/Services/AuthService.swift`
 - Test: `CarniVisionTests/AuthServiceTests.swift`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `CarniVisionTests/AuthServiceTests.swift`:
 
@@ -335,14 +335,14 @@ final class AuthServiceTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the test, verify it fails to build**
+- [x] **Step 2: Run the test, verify it fails to build**
 
 ```bash
 xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: FAIL — `AuthBackend`, `AuthIdentity`, `AuthService` are undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `CarniVision/Services/AuthService.swift`:
 
@@ -459,7 +459,7 @@ final class AuthService: ObservableObject {
 }
 ```
 
-- [ ] **Step 4: Register both files in their targets**
+- [x] **Step 4: Register both files in their targets**
 
 In Xcode add `CarniVision/Services/AuthService.swift` to the **CarniVision** target and `CarniVisionTests/AuthServiceTests.swift` to the **CarniVisionTests** target. Verify:
 
@@ -469,14 +469,14 @@ grep -c "AuthServiceTests.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
-- [ ] **Step 5: Run the test, verify it passes**
+- [x] **Step 5: Run the test, verify it passes**
 
 ```bash
 xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/AuthServiceTests 2>&1 | tail -20
 ```
 Expected: PASS (3 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add CarniVision/Services/AuthService.swift CarniVisionTests/AuthServiceTests.swift CarniVision.xcodeproj
