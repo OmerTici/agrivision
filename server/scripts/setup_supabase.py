@@ -37,7 +37,14 @@ async def apply_schema(dsn: str) -> None:
             "select atttypmod from pg_attribute "
             "where attrelid='embeddings'::regclass and attname='vec'"
         )
-        print(f"[1/3] schema applied (embeddings.vec dim = {dim})")
+        events_ok = await conn.fetchval("select to_regclass('public.events') is not null")
+        storage_policy_ok = await conn.fetchval(
+            "select exists (select 1 from pg_policies where schemaname = 'storage' "
+            "and tablename = 'objects' and policyname = 'muzzles owner read')"
+        )
+        print(f"[1/3] schema applied (embeddings.vec dim = {dim}, "
+              f"events table = {'ok' if events_ok else 'MISSING'}, "
+              f"muzzles read policy = {'ok' if storage_policy_ok else 'MISSING - add in Dashboard > Storage > Policies'})")
     finally:
         await conn.close()
 

@@ -37,3 +37,38 @@ create policy "own animals" on animals
 drop policy if exists "own embeddings" on embeddings;
 create policy "own embeddings" on embeddings
   for all using (owner = auth.uid()) with check (owner = auth.uid());
+
+-- Action feed: one row per enroll/identify, written ONLY by the embedder
+-- (service role). Owners read their own feed from the iOS app via PostgREST.
+create table if not exists events (
+  id          uuid primary key default gen_random_uuid(),
+  owner       uuid not null,
+  kind        text not null check (kind in ('enroll', 'identify')),
+  animal_id   uuid references animals(id) on delete set null,  -- null for unknown identify
+  result      text not null check (result in ('enrolled', 'identified', 'unknown')),
+  score       real,                                 -- top-1 similarity for identify, null for enroll
+  created_at  timestamptz not null default now()
+);
+create index if not exists events_owner_created_idx on events (owner, created_at desc);
+
+alter table events enable row level security;
+
+-- Owners read their own events; there is deliberately NO insert/update/delete
+-- policy — only the service role (which bypasses RLS) writes.
+drop policy if exists "own events" on events;
+create policy "own events" on events
+  for select using (owner = auth.uid());
+
+-- Storage: owners read their own photos. Object paths are
+-- {owner_uid}/{animal_id}/{muzzle|full}/{uuid}.jpg, so the first path segment
+-- is the owner uid. Wrapped in a DO block: on some Supabase projects the
+-- postgres role cannot create policies on storage.objects; in that case the
+-- NOTICE below says to add it in Dashboard > Storage > Policies instead.
+do $$
+begin
+  drop policy if exists "muzzles owner read" on storage.objects;
+  create policy "muzzles owner read" on storage.objects for select
+    using (bucket_id = 'muzzles' and auth.uid()::text = (storage.foldername(name))[1]);
+exception when insufficient_privilege then
+  raise notice 'insufficient privilege for storage.objects policies — create "muzzles owner read" (SELECT, bucket muzzles, auth.uid()::text = (storage.foldername(name))[1]) in Dashboard > Storage > Policies';
+end $$;
