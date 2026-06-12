@@ -1,6 +1,8 @@
 import SwiftUI
+import Supabase
 
 struct SettingsScreen: View {
+    @EnvironmentObject private var auth: AuthService
     @ObservedObject private var lang = LanguageManager.shared
 
     @State private var notificationsOn = true
@@ -43,7 +45,7 @@ struct SettingsScreen: View {
                 Text("Green Valley Farm")
                     .font(CarniFont.bold(17))
                     .foregroundStyle(CarniColors.purpleDark)
-                Text("owner@greenvalley.farm")
+                Text(SupabaseClientProvider.shared.auth.currentSession?.user.email ?? "owner@greenvalley.farm")
                     .font(CarniFont.regular(13))
                     .foregroundStyle(CarniColors.tabInactive)
             }
@@ -177,7 +179,7 @@ struct SettingsScreen: View {
 
     private var signOutButton: some View {
         Button {
-            // Hook up to auth flow later.
+            Task { await auth.signOut() }
         } label: {
             Label(lang.t("settings.signout"), systemImage: "rectangle.portrait.and.arrow.right")
                 .font(CarniFont.semibold(15))
