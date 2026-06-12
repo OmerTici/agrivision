@@ -860,7 +860,7 @@ git commit -m "Replace fake auth flag with AuthService session gating"
 **Files:**
 - Create: `CarniVision/Services/RecognitionModels.swift`
 
-- [ ] **Step 1: Create the models**
+- [x] **Step 1: Create the models**
 
 Create `CarniVision/Services/RecognitionModels.swift`. Field names use `CodingKeys` to map the server's snake_case JSON.
 
@@ -928,7 +928,7 @@ enum RecognitionError: Error, LocalizedError {
 }
 ```
 
-- [ ] **Step 2: Register in the app target**
+- [x] **Step 2: Register in the app target**
 
 In Xcode add `CarniVision/Services/RecognitionModels.swift` to the **CarniVision** target. Verify:
 
@@ -937,7 +937,7 @@ grep -c "RecognitionModels.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add CarniVision/Services/RecognitionModels.swift CarniVision.xcodeproj
@@ -952,7 +952,7 @@ git commit -m "Add recognition response models"
 - Create: `CarniVision/Services/MultipartFormData.swift`
 - Test: `CarniVisionTests/MultipartFormDataTests.swift`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `CarniVisionTests/MultipartFormDataTests.swift`:
 
@@ -1006,14 +1006,14 @@ final class MultipartFormDataTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the test, verify it fails to build**
+- [x] **Step 2: Run the test, verify it fails to build**
 
 ```bash
 xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/MultipartFormDataTests 2>&1 | tail -20
 ```
 Expected: FAIL — `MultipartFormData` undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `CarniVision/Services/MultipartFormData.swift`:
 
@@ -1059,7 +1059,7 @@ struct MultipartFormData {
 }
 ```
 
-- [ ] **Step 4: Register both files in their targets**
+- [x] **Step 4: Register both files in their targets**
 
 In Xcode add `CarniVision/Services/MultipartFormData.swift` to the **CarniVision** target and `CarniVisionTests/MultipartFormDataTests.swift` to the **CarniVisionTests** target. Verify:
 
@@ -1069,14 +1069,14 @@ grep -c "MultipartFormDataTests.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
-- [ ] **Step 5: Run the test, verify it passes**
+- [x] **Step 5: Run the test, verify it passes**
 
 ```bash
 xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/MultipartFormDataTests 2>&1 | tail -20
 ```
 Expected: PASS (5 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add CarniVision/Services/MultipartFormData.swift CarniVisionTests/MultipartFormDataTests.swift CarniVision.xcodeproj
@@ -1091,7 +1091,7 @@ git commit -m "Add multipart/form-data encoder with tests"
 - Create: `CarniVision/Services/ImageEncoding.swift`
 - Create: `CarniVision/Services/RecognitionService.swift`
 
-- [ ] **Step 1: Create the image helpers**
+- [x] **Step 1: Create the image helpers**
 
 Create `CarniVision/Services/ImageEncoding.swift`:
 
@@ -1124,7 +1124,7 @@ enum ImageEncoding {
 }
 ```
 
-- [ ] **Step 2: Create the protocol + mock**
+- [x] **Step 2: Create the protocol + mock**
 
 Create `CarniVision/Services/RecognitionService.swift`:
 
@@ -1166,7 +1166,7 @@ final class MockRecognitionService: ObservableObject, RecognitionService {
 
 > `IdentifyResult`/`EnrollResult` are `Decodable`-only structs (Task 7). Their memberwise initializers are still synthesized because no custom `init` is declared, so the mock can construct them directly.
 
-- [ ] **Step 3: Register both files in the app target**
+- [x] **Step 3: Register both files in the app target**
 
 In Xcode add both files to the **CarniVision** target. Verify:
 
@@ -1176,7 +1176,7 @@ grep -c "RecognitionService.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add CarniVision/Services/ImageEncoding.swift CarniVision/Services/RecognitionService.swift CarniVision.xcodeproj
@@ -1191,7 +1191,7 @@ git commit -m "Add image encoding helpers and RecognitionService protocol with m
 - Create: `CarniVision/Services/CloudRunRecognitionService.swift`
 - Test: `CarniVisionTests/RecognitionDecodingTests.swift`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `CarniVisionTests/RecognitionDecodingTests.swift`:
 
@@ -1349,14 +1349,14 @@ final class RecognitionDecodingTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the test, verify it fails to build**
+- [x] **Step 2: Run the test, verify it fails to build**
 
 ```bash
 xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/RecognitionDecodingTests 2>&1 | tail -20
 ```
 Expected: FAIL — `CloudRunRecognitionService` undefined.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `CarniVision/Services/CloudRunRecognitionService.swift`:
 
@@ -1465,7 +1465,7 @@ private struct HealthResponse: Decodable {
 }
 ```
 
-- [ ] **Step 4: Register both files in their targets**
+- [x] **Step 4: Register both files in their targets**
 
 In Xcode add `CarniVision/Services/CloudRunRecognitionService.swift` to **CarniVision** and `CarniVisionTests/RecognitionDecodingTests.swift` to **CarniVisionTests**. Verify:
 
@@ -1475,14 +1475,14 @@ grep -c "RecognitionDecodingTests.swift" CarniVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
-- [ ] **Step 5: Run the test, verify it passes**
+- [x] **Step 5: Run the test, verify it passes**
 
 ```bash
 xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/RecognitionDecodingTests 2>&1 | tail -20
 ```
 Expected: PASS (4 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add CarniVision/Services/CloudRunRecognitionService.swift CarniVisionTests/RecognitionDecodingTests.swift CarniVision.xcodeproj
