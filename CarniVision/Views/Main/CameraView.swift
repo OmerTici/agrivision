@@ -79,6 +79,9 @@ final class CameraModel: NSObject, ObservableObject {
     @Published var identifyResult: IdentifyResult?
     /// True while an identify/enroll network call is in flight.
     @Published var isContacting = false
+    /// Set to true (on main) once lastPhoto is populated by captureFullBody().
+    /// The view observes this flag to trigger submitEnrollment and resets it after consuming.
+    @Published var fullBodyReady = false
     /// Network/identify error message key or text for the result card.
     @Published var recognitionError: String?
 
@@ -297,6 +300,7 @@ final class CameraModel: NSObject, ObservableObject {
 
     func capturePhoto() {
         if captureMode == .manual && !canManualCapture { return }
+        if isContacting { return }
 
         videoQueue.async { [weak self] in
             self?.hasAutoCaptured = true
@@ -436,6 +440,8 @@ final class CameraModel: NSObject, ObservableObject {
                     self.lastPhoto = image
                     self.captureDelegate = nil
                     self.isProcessing = false
+                    // Signal the view that the full-body frame is ready for submission.
+                    self.fullBodyReady = true
                 }
             }
             self.captureDelegate = delegate
@@ -773,6 +779,12 @@ struct CameraScreen: View {
                 generator.notificationOccurred(.warning)
             }
         }
+        .onChange(of: model.fullBodyReady) { _, ready in
+            guard ready else { return }
+            // Consume the flag immediately so this fires exactly once per capture.
+            model.fullBodyReady = false
+            Task { await model.submitEnrollment(using: recognition) }
+        }
         .sheet(isPresented: $showHelp) {
             MuzzleHelpSheet()
         }
@@ -854,8 +866,8 @@ struct CameraScreen: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .disabled(model.isProcessing || !model.canManualCapture)
-                .opacity(model.canManualCapture && !model.isProcessing ? 1 : 0.35)
+                .disabled(model.isProcessing || !model.canManualCapture || model.isContacting)
+                .opacity(model.canManualCapture && !model.isProcessing && !model.isContacting ? 1 : 0.35)
                 .padding(.bottom, 36)
             }
         }
@@ -1007,11 +1019,7 @@ struct CameraScreen: View {
                     .shadow(color: .black.opacity(0.5), radius: 4)
                 Button {
                     model.captureFullBody()
-                    Task {
-                        // Give the capture a beat to set lastPhoto, then submit.
-                        try? await Task.sleep(nanoseconds: 400_000_000)
-                        await model.submitEnrollment(using: recognition)
-                    }
+                    // Submission is triggered event-driven via .onChange(of: model.fullBodyReady).
                 } label: {
                     Text(lang.t("camera.enroll.captureFull"))
                         .font(CarniFont.semibold(16))
@@ -1042,7 +1050,13 @@ struct CameraScreen: View {
                         .font(.system(size: 54)).foregroundStyle(CarniColors.successGreen)
                     Text(lang.t("camera.enroll.success"))
                         .font(CarniFont.bold(20)).foregroundStyle(.white)
-                    Button { onClose() } label: {
+                    Button {
+                        // Release captured images before closing so the model
+                        // doesn't hold 6 full-res UIImages after a successful enrollment.
+                        model.collectedCrops = []
+                        model.lastPhoto = nil
+                        onClose()
+                    } label: {
                         Text(lang.t("camera.done"))
                             .font(CarniFont.semibold(16)).foregroundStyle(CarniColors.purple)
                             .padding(.vertical, 12).padding(.horizontal, 40)
