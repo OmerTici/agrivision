@@ -2276,7 +2276,7 @@ git commit -m "Add enrollment progress, full-body prompt, and identify result UI
 **Files:**
 - Modify: `CarniVision/Views/Main/AddAnimalView.swift`
 
-- [ ] **Step 1: Inject auth, add repository + presentation state**
+- [x] **Step 1: Inject auth, add repository + presentation state**
 
 In `CarniVision/Views/Main/AddAnimalView.swift`, replace this exact block:
 
@@ -2320,7 +2320,7 @@ struct AddAnimalScreen: View {
     @State private var enrollAnimalID: String?
 ```
 
-- [ ] **Step 2: Replace the save button to show a saving state and inline error**
+- [x] **Step 2: Replace the save button to show a saving state and inline error**
 
 Replace this exact block:
 
@@ -2370,7 +2370,7 @@ with:
     }
 ```
 
-- [ ] **Step 3: Present the enrollment camera as a full-screen cover**
+- [x] **Step 3: Present the enrollment camera as a full-screen cover**
 
 Replace this exact block (the root `ZStack` modifiers — currently the `ZStack` closes with `}` and has no trailing modifiers other than its contents). Replace:
 
@@ -2410,7 +2410,7 @@ extension String: Identifiable {
 }
 ```
 
-- [ ] **Step 4: Rewrite `save()` to create the row then launch enrollment**
+- [x] **Step 4: Rewrite `save()` to create the row then launch enrollment**
 
 Replace this exact method:
 
@@ -2492,7 +2492,7 @@ with:
 }
 ```
 
-- [ ] **Step 5: Add the HerdStore helper used on enrollment completion**
+- [x] **Step 5: Add the HerdStore helper used on enrollment completion**
 
 In `CarniVision/Models/HerdData.swift`, add this method to `HerdStore` immediately **after** the existing `addAnimal(...)` method (before the `// MARK: Date helpers` comment):
 
@@ -2508,14 +2508,14 @@ In `CarniVision/Models/HerdData.swift`, add this method to `HerdStore` immediate
 
 > New animals are inserted at index 0 (`animals.insert(animal, at: 0)`), so index 0 is the just-added animal.
 
-- [ ] **Step 6: Build to confirm wiring compiles**
+- [x] **Step 6: Build to confirm wiring compiles**
 
 ```bash
 xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add CarniVision/Views/Main/AddAnimalView.swift CarniVision/Models/HerdData.swift

@@ -2,7 +2,10 @@ import SwiftUI
 
 struct AddAnimalScreen: View {
     @EnvironmentObject private var store: HerdStore
+    @EnvironmentObject private var auth: AuthService
     @ObservedObject private var lang = LanguageManager.shared
+
+    private let repository = AnimalRepository()
 
     @State private var name = ""
     @State private var tag = ""
@@ -12,6 +15,11 @@ struct AddAnimalScreen: View {
     @State private var weightText = ""
     @State private var muzzleScanned = false
     @State private var showSavedToast = false
+
+    @State private var isSaving = false
+    @State private var saveError: String?
+    /// Set to the new animal id to trigger the enrollment camera.
+    @State private var enrollAnimalID: String?
 
     private let breeds = ["Holstein", "Angus", "Simmental", "Jersey", "Hereford", "Charolais", "Limousin"]
 
@@ -38,6 +46,16 @@ struct AddAnimalScreen: View {
             if showSavedToast {
                 savedToast
             }
+        }
+        .fullScreenCover(item: $enrollAnimalID) { animalID in
+            CameraScreen(
+                onClose: {
+                    // Mark local registration on success path completion.
+                    store.markLastAddedMuzzleRegistered()
+                    enrollAnimalID = nil
+                },
+                enrollAnimalID: animalID
+            )
         }
     }
 
@@ -184,19 +202,27 @@ struct AddAnimalScreen: View {
     }
 
     private var saveButton: some View {
-        Button(action: save) {
-            Text(lang.t("add.save"))
-                .font(CarniFont.bold(16))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(canSave ? CarniColors.purple : CarniColors.purple.opacity(0.35))
-                )
+        VStack(spacing: 10) {
+            if let saveError {
+                Text(saveError)
+                    .font(CarniFont.regular(13))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Button(action: save) {
+                Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("add.save"))
+                    .font(CarniFont.bold(16))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(canSave && !isSaving ? CarniColors.purple : CarniColors.purple.opacity(0.35))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSave || isSaving)
         }
-        .buttonStyle(.plain)
-        .disabled(!canSave)
     }
 
     private var savedToast: some View {
@@ -212,24 +238,50 @@ struct AddAnimalScreen: View {
     }
 
     private func save() {
-        store.addAnimal(
-            name: name.trimmingCharacters(in: .whitespaces),
-            tag: tag.trimmingCharacters(in: .whitespaces),
-            breed: breed,
-            sex: sex,
-            birthDate: birthDate,
-            initialWeightKg: Double(weightText.replacingOccurrences(of: ",", with: ".")),
-            muzzleRegistered: muzzleScanned
-        )
+        guard let ownerID = auth.userID else {
+            saveError = lang.t("auth.error.generic")
+            return
+        }
+        saveError = nil
+        isSaving = true
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let trimmedTag = tag.trimmingCharacters(in: .whitespaces)
 
-        name = ""
-        tag = ""
-        weightText = ""
-        muzzleScanned = false
-
-        withAnimation(.spring(duration: 0.35)) { showSavedToast = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-            withAnimation(.easeOut(duration: 0.3)) { showSavedToast = false }
+        Task {
+            do {
+                let created = try await repository.create(
+                    ownerID: ownerID,
+                    name: trimmedName,
+                    tag: trimmedTag,
+                    breed: breed,
+                    sex: sex,
+                    birthDate: birthDate
+                )
+                // Keep the in-memory herd list in sync (muzzleRegistered flips
+                // to true only after a successful enroll — see markLast…).
+                store.addAnimal(
+                    name: trimmedName,
+                    tag: trimmedTag,
+                    breed: breed,
+                    sex: sex,
+                    birthDate: birthDate,
+                    initialWeightKg: Double(weightText.replacingOccurrences(of: ",", with: ".")),
+                    muzzleRegistered: false
+                )
+                await MainActor.run {
+                    isSaving = false
+                    name = ""
+                    tag = ""
+                    weightText = ""
+                    muzzleScanned = false
+                    enrollAnimalID = created.id   // launches the enrollment camera
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    saveError = error.localizedDescription
+                }
+            }
         }
     }
 }
@@ -255,4 +307,8 @@ private struct FormField: View {
                 )
         }
     }
+}
+
+extension String: Identifiable {
+    public var id: String { self }
 }

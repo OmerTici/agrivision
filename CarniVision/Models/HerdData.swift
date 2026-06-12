@@ -243,6 +243,14 @@ final class HerdStore: ObservableObject {
         animals.insert(animal, at: 0)
     }
 
+    /// Flips the most-recently-added animal's muzzle flag to true (called when
+    /// the enrollment camera completes successfully). MVP-local only.
+    func markLastAddedMuzzleRegistered() {
+        guard !animals.isEmpty else { return }
+        animals[0].muzzleRegistered = true
+        animals[0].lastScanned = Date()
+    }
+
     // MARK: Date helpers for seed data
 
     private static func yearsAgo(_ years: Int, months: Int) -> Date {
