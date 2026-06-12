@@ -6,6 +6,7 @@ import SwiftUI
 struct AnimalsScreen: View {
     @EnvironmentObject private var store: HerdStore
     @ObservedObject private var lang = LanguageManager.shared
+    @Binding var showAddAnimal: Bool
     @State private var searchText = ""
     @State private var filter: SexFilter = .all
 
@@ -69,6 +70,9 @@ struct AnimalsScreen: View {
             }
             .background(CarniColors.appBackground)
             .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showAddAnimal) {
+                AddAnimalScreen()
+            }
         }
     }
 

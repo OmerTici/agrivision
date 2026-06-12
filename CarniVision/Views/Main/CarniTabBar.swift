@@ -4,7 +4,6 @@ enum AppTab: Hashable {
     case home
     case animals
     case camera
-    case addAnimal
     case settings
 }
 
@@ -84,13 +83,6 @@ struct CarniTabBar: View {
                 selected = .camera
             }
 
-            TabBarItem(
-                icon: "plus",
-                selectedIcon: "plus",
-                label: lang.t("tab.add"),
-                tab: .addAnimal,
-                selected: $selected
-            )
             TabBarItem(
                 icon: "gearshape",
                 selectedIcon: "gearshape.fill",

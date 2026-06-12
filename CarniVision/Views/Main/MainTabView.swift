@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selected: AppTab = .home
+    @State private var showAddAnimal = false
     @StateObject private var store = HerdStore()
 
     var body: some View {
@@ -17,6 +18,9 @@ struct MainTabView: View {
                 CarniTabBar(selected: $selected)
             }
         }
+        // MainTabView only exists while signed in (RootView), so this runs on
+        // sign-in and on each cold launch with a restored session.
+        .task { await store.load() }
     }
 
     @ViewBuilder
@@ -25,14 +29,16 @@ struct MainTabView: View {
         case .home:
             HomeScreen(onSeeAllAnimals: { selected = .animals })
         case .animals:
-            AnimalsScreen()
+            AnimalsScreen(showAddAnimal: $showAddAnimal)
         case .camera:
             CameraScreen(
                 onClose: { selected = .home },
-                onRequestEnroll: { selected = .addAnimal }
+                onRequestEnroll: {
+                    // Unknown identify -> offer enrollment via the Add form.
+                    selected = .animals
+                    showAddAnimal = true
+                }
             )
-        case .addAnimal:
-            AddAnimalScreen()
         case .settings:
             SettingsScreen()
         }
