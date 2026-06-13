@@ -1,0 +1,89 @@
+import CoreML
+import UIKit
+import Vision
+
+/// A single cow detection from the live gate (COCO YOLO11n, "cow" class).
+struct CowDetection {
+    let boundingBox: CGRect
+    let confidence: Float
+}
+
+/// Loads the COCO CoreML detector and returns only detections whose top class
+/// is "cow"; sheep, horse, dog, and everything else are discarded.
+final class CowDetectorService {
+    private var visionModel: VNCoreMLModel?
+
+    init() {
+        loadModel()
+    }
+
+    var isReady: Bool { visionModel != nil }
+
+    private func loadModel() {
+        let config = MLModelConfiguration()
+        config.computeUnits = .all
+
+        if let url = Bundle.main.url(forResource: "CowDetector", withExtension: "mlmodelc") {
+            do {
+                let mlModel = try MLModel(contentsOf: url, configuration: config)
+                visionModel = try VNCoreMLModel(for: mlModel)
+                return
+            } catch {
+                print("[CowDetector] Failed to load compiled model: \(error)")
+            }
+        } else {
+            print("[CowDetector] CowDetector.mlmodelc not found in bundle.")
+        }
+    }
+
+    func detections(
+        in pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation = .up
+    ) -> [CowDetection] {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+        return perform(with: handler)
+    }
+
+    func detections(
+        in cgImage: CGImage,
+        orientation: CGImagePropertyOrientation = .up
+    ) -> [CowDetection] {
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
+        return perform(with: handler)
+    }
+
+    private func perform(with handler: VNImageRequestHandler) -> [CowDetection] {
+        guard let visionModel else { return [] }
+
+        var output: [CowDetection] = []
+        let request = VNCoreMLRequest(model: visionModel) { request, _ in
+            guard let results = request.results as? [VNRecognizedObjectObservation] else { return }
+            output = results.compactMap { obs in
+                guard Self.isCow(obs) else { return nil }
+                // obs.confidence is the detection score; the per-label confidence
+                // is a separate value we don't gate on.
+                return CowDetection(
+                    boundingBox: obs.boundingBox,
+                    confidence: obs.confidence
+                )
+            }
+        }
+        request.imageCropAndScaleOption = .scaleFill
+
+        do {
+            try handler.perform([request])
+        } catch {
+            print("[CowDetector] Detection failed: \(error)")
+        }
+        return output
+    }
+
+    private static func isCow(_ observation: VNRecognizedObjectObservation) -> Bool {
+        // Accept only when the top class is COCO "cow"; sheep/horse/dog/etc. are
+        // rejected so they can't trigger the capture gate.
+        guard let top = observation.labels.max(by: { $0.confidence < $1.confidence }) else {
+            return false
+        }
+        return top.identifier.lowercased() == "cow"
+    }
+}
