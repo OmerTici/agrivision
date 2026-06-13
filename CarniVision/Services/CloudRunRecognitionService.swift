@@ -1,10 +1,15 @@
 import Foundation
 
+/// Lifecycle of the scale-to-zero embedder as the app understands it.
+enum ServerStatus { case unknown, connecting, online, offline }
+
 /// Talks to the Cloud Run embedder over multipart/form-data with a Bearer JWT.
 @MainActor
 final class CloudRunRecognitionService: ObservableObject, RecognitionService {
-    /// True once /health reports the model is loaded; drives "waking up" UI.
-    @Published var isReady = false
+    /// Drives the status pill and the camera readiness gate.
+    @Published var status: ServerStatus = .unknown
+    /// True once /health reports the model is loaded.
+    var isReady: Bool { status == .online }
 
     private let baseURL: URL
     private let session: URLSession
@@ -14,10 +19,20 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
     /// Cold-start budget for the first network call.
     private let coldStartTimeout: TimeInterval = 90
 
-    init(baseURL: URL, session: URLSession = .shared, tokenProvider: @escaping () async -> String?) {
+    /// Injected so tests can advance time; production uses the wall clock.
+    private let now: () -> Date
+    /// Skip re-pinging if we confirmed online within this window (< container idle timeout).
+    private let debounceWindow: TimeInterval = 120
+    /// Timestamp of the last confirmed-online /health.
+    private var lastOnlineCheck: Date?
+
+    init(baseURL: URL, session: URLSession = .shared,
+         tokenProvider: @escaping () async -> String?,
+         now: @escaping () -> Date = Date.init) {
         self.baseURL = baseURL
         self.session = session
         self.tokenProvider = tokenProvider
+        self.now = now
     }
 
     func warmUp() async {
@@ -28,9 +43,9 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let health = try JSONDecoder().decode(HealthResponse.self, from: data)
-            isReady = health.modelLoaded
+            status = health.modelLoaded ? .online : .offline
         } catch {
-            isReady = false
+            status = .offline
         }
     }
 

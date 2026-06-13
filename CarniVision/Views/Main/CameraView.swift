@@ -1512,7 +1512,7 @@ extension CloudRunRecognitionService {
             baseURL: URL(string: "https://preview.invalid")!,
             tokenProvider: { "preview-token" }
         )
-        s.isReady = true
+        s.status = .online
         return s
     }
 }
