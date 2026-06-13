@@ -8,6 +8,7 @@ struct AnimalsScreen: View {
     @Binding var showAddAnimal: Bool
     @State private var searchText = ""
     @State private var filter: SexFilter = .all
+    private let repository = AnimalRepository()
 
     enum SexFilter: String, CaseIterable {
         case all
@@ -67,6 +68,13 @@ struct AnimalsScreen: View {
                                     AnimalCard(animal: animal)
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        archive(animal)
+                                    } label: {
+                                        Label(lang.t("detail.delete"), systemImage: "trash")
+                                    }
+                                }
                             }
                         }
 
@@ -84,6 +92,46 @@ struct AnimalsScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showAddAnimal) {
                 AddAnimalScreen()
+            }
+            .overlay(alignment: .bottom) {
+                if let archived = store.recentlyArchived {
+                    UndoToast(
+                        message: lang.t("undo.archived"),
+                        actionTitle: lang.t("undo.action"),
+                        onUndo: { undoArchive(archived) }
+                    )
+                    .padding(.bottom, CarniLayout.tabBarClearance)
+                    .task(id: archived.id) {
+                        // Auto-dismiss after ~4s unless undone/replaced.
+                        try? await Task.sleep(nanoseconds: 4_000_000_000)
+                        if store.recentlyArchived?.id == archived.id {
+                            store.clearRecentlyArchived()
+                        }
+                    }
+                }
+            }
+            .animation(.spring(duration: 0.3), value: store.recentlyArchived?.id)
+        }
+    }
+
+    private func archive(_ animal: Animal) {
+        Task {
+            do {
+                try await repository.softDelete(animalID: animal.id.uuidString)
+                await MainActor.run { store.removeAnimal(id: animal.id) }
+            } catch {
+                await store.load()
+            }
+        }
+    }
+
+    private func undoArchive(_ animal: Animal) {
+        Task {
+            do {
+                try await repository.restore(animalID: animal.id.uuidString)
+                await MainActor.run { store.restoreAnimal(animal) }
+            } catch {
+                await store.load()
             }
         }
     }
@@ -244,6 +292,8 @@ struct AnimalDetailView: View {
     @ObservedObject private var lang = LanguageManager.shared
     @State private var animal: Animal
     @State private var showEdit = false
+    @State private var showDeleteConfirm = false
+    private let repository = AnimalRepository()
 
     init(animal: Animal) {
         _animal = State(initialValue: animal)
@@ -255,6 +305,21 @@ struct AnimalDetailView: View {
                 topBar
                 identityCard
                 infoGrid
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    Label(lang.t("detail.delete"), systemImage: "trash")
+                        .font(CarniFont.semibold(15))
+                        .foregroundStyle(Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255).opacity(0.1))
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -271,6 +336,32 @@ struct AnimalDetailView: View {
                 animal.birthDate = birthDate
             }
             .environmentObject(store)
+        }
+        .confirmationDialog(
+            lang.t("delete.confirmTitle"),
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(lang.t("delete.confirm"), role: .destructive) { performDelete() }
+            Button(lang.t("common.cancel"), role: .cancel) {}
+        } message: {
+            Text(lang.t("delete.confirmBody"))
+        }
+    }
+
+    private func performDelete() {
+        let id = animal.id
+        Task {
+            do {
+                try await repository.softDelete(animalID: id.uuidString)
+                await MainActor.run {
+                    store.removeAnimal(id: id)   // sets store.recentlyArchived → toast in list
+                    dismiss()
+                }
+            } catch {
+                // Reconcile on failure: a reload drops it only if the server agrees.
+                await store.load()
+            }
         }
     }
 
@@ -371,5 +462,35 @@ private struct InfoTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .carniCard(padding: 14)
+    }
+}
+
+/// Snackbar shown after archiving an animal: message + Undo, auto-dismissing.
+struct UndoToast: View {
+    let message: String
+    let actionTitle: String
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(message)
+                .font(CarniFont.semibold(14))
+                .foregroundStyle(.white)
+            Spacer(minLength: 8)
+            Button(action: onUndo) {
+                Text(actionTitle)
+                    .font(CarniFont.bold(14))
+                    .foregroundStyle(CarniColors.purple)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(
+            Capsule().fill(CarniColors.purpleDark)
+                .shadow(color: CarniColors.purpleDark.opacity(0.35), radius: 10, y: 4)
+        )
+        .padding(.horizontal, 20)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
