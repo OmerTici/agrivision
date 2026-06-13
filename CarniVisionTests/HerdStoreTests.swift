@@ -55,6 +55,25 @@ final class HerdStoreTests: XCTestCase {
         XCTAssertEqual(store.scansThisWeek, 1)
     }
 
+    /// The recent-activity feed is secondary: if events fail (e.g. the `events`
+    /// table is missing), the herd must still load and no error banner shows.
+    func testEventFeedFailureStillLoadsAnimalsWithoutError() async {
+        struct EventsUnavailable: Error {}
+        let animals = MockAnimalListing()
+        animals.records = [makeRecord(embeddingCount: 5)]
+        let events = MockEventListing()
+        events.error = EventsUnavailable()
+        let store = HerdStore(animalSource: animals, eventSource: events)
+
+        await store.load()
+
+        XCTAssertNil(store.loadError)
+        XCTAssertEqual(store.animals.count, 1)
+        XCTAssertEqual(store.animals[0].name, "Deneme 1")
+        XCTAssertTrue(store.events.isEmpty)
+        XCTAssertFalse(store.isLoading)
+    }
+
     func testLoadFailureSetsLoadErrorAndKeepsListsEmpty() async {
         let animals = MockAnimalListing()
         animals.error = URLError(.notConnectedToInternet)

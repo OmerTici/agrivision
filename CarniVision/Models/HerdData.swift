@@ -176,11 +176,14 @@ final class HerdStore: ObservableObject {
         loadError = nil
         defer { isLoading = false }
         do {
-            async let animalRecords = animalSource.list()
-            async let eventRecords = eventSource.recent(limit: 20)
-            let (records, recent) = try await (animalRecords, eventRecords)
+            async let pendingEvents = eventSource.recent(limit: 20)
+            let records = try await animalSource.list()
             let loaded = records.map(Animal.init(record:))
             animals = loaded
+            // The recent-activity feed is secondary: a failure here (e.g. the
+            // events table is missing) must never blank out the herd. Degrade
+            // to an empty feed rather than failing the whole load.
+            let recent = (try? await pendingEvents) ?? []
             events = recent.map { ScanEvent(record: $0, animals: loaded) }
         } catch {
             loadError = Self.loadErrorMessage(for: error)
