@@ -6,6 +6,7 @@ create table if not exists animals (
   owner uuid references auth.users not null,
   name text, tag text, breed text, sex text,
   birth_date date, status text,
+  deleted_at timestamptz,
   created_at timestamptz default now()
 );
 
