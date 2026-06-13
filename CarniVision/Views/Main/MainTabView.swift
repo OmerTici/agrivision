@@ -22,14 +22,16 @@ struct MainTabView: View {
             if selected != .camera {
                 CarniTabBar(selected: $selected)
             }
-            ServerStatusPill(status: recognition.status,
-                             lang: lang,
-                             onRetry: { Task { await recognition.warmUp() } })
-                .frame(maxHeight: .infinity, alignment: .top)
+            VStack {
+                ServerStatusPill(status: recognition.status,
+                                 lang: lang,
+                                 onRetry: { Task { await recognition.warmUp() } })
+                Spacer()
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: recognition.status)
         // MainTabView only exists while signed in (RootView), so this runs on
         // sign-in and on each cold launch with a restored session.
-        // Runs on sign-in and on each cold launch with a restored session.
         .task {
             await store.load()
             await recognition.warmUp()
@@ -92,6 +94,7 @@ private struct ServerStatusPill: View {
                      showsSpinner: false)
             }
             .buttonStyle(.plain)
+            .contentShape(Capsule())
         case .online, .unknown:
             EmptyView()
         }
@@ -111,6 +114,5 @@ private struct ServerStatusPill: View {
         .background(Capsule().fill(background))
         .padding(.top, 12)
         .transition(.move(edge: .top).combined(with: .opacity))
-        .animation(.easeInOut(duration: 0.25), value: status)
     }
 }
