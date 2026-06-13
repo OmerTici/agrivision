@@ -26,8 +26,9 @@ struct CarniVisionApp: App {
                     Task { await auth.handleDeepLink(url) }
                 }
                 .task {
+                    // Warmup now happens on user activity (MainTabView), not at launch,
+                    // so a backgrounded-then-resumed app re-checks the sleeping container.
                     await auth.bootstrap()
-                    await recognition.warmUp()
                 }
         }
     }
