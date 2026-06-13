@@ -13,6 +13,15 @@ protocol AuthBackend {
     func signIn(email: String, password: String) async throws -> AuthIdentity
     func signUp(email: String, password: String) async throws -> AuthIdentity
     func signOut() async throws
+    /// Updates the signed-in user's email. Projects with email confirmation
+    /// enabled send a verification link and defer the change until confirmed.
+    func updateEmail(_ email: String) async throws
+    /// Emails the signed-in user a 6-digit reauthentication code. Required before
+    /// `updatePassword` when the project enforces secure password change.
+    func sendReauthenticationCode() async throws
+    /// Updates the signed-in user's password, confirming identity with the
+    /// `nonce` (the emailed reauthentication code).
+    func updatePassword(_ password: String, nonce: String) async throws
     /// Returns a persisted session if the SDK restored one at launch.
     func restoreSession() async -> AuthIdentity?
     /// Emits identity updates as the SDK's session changes (refresh / sign-in / sign-out).
@@ -61,6 +70,18 @@ struct SupabaseAuthBackend: AuthBackend {
 
     func signOut() async throws {
         try await client.auth.signOut()
+    }
+
+    func updateEmail(_ email: String) async throws {
+        try await client.auth.update(user: UserAttributes(email: email))
+    }
+
+    func sendReauthenticationCode() async throws {
+        try await client.auth.reauthenticate()
+    }
+
+    func updatePassword(_ password: String, nonce: String) async throws {
+        try await client.auth.update(user: UserAttributes(password: password, nonce: nonce))
     }
 
     /// Exchanges the deep link's auth payload (PKCE `code`) for a session. The
@@ -184,6 +205,51 @@ final class AuthService: ObservableObject {
             identity = nil
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Updates the account email. Returns true on success so the caller can
+    /// confirm to the user (a verification email may still be pending).
+    func updateEmail(_ email: String) async -> Bool {
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await backend.updateEmail(email)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Emails the signed-in user a 6-digit code to confirm a password change.
+    /// Returns true once the code is sent. Does not toggle `isWorking` so the
+    /// caller can show a dedicated "sending" state separate from the save button.
+    func sendPasswordChangeCode() async -> Bool {
+        errorMessage = nil
+        do {
+            try await backend.sendReauthenticationCode()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Updates the account password, confirming the user with the emailed
+    /// reauthentication `code`. Call `sendPasswordChangeCode` first. Returns true
+    /// on success.
+    func updatePassword(new: String, code: String) async -> Bool {
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await backend.updatePassword(new, nonce: code)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 }

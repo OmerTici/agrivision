@@ -4,7 +4,7 @@ Branded HTML email templates for the Supabase Auth flows, styled to the
 samperlabs.com identity (deep navy `#0E2A47`, green→blue gradient
 `#2BC07C → #1C9FD6 → #1C84E0`, white/`#F4F7FA` surfaces, Lato type, real logo).
 
-Open **`_preview.html`** in a browser to see all six at once.
+Open **`_preview.html`** in a browser to see all eight at once.
 
 ## Files → Supabase slots
 
@@ -19,6 +19,14 @@ into the matching template, then **Save**.
 | `invite.html`            | **Invite user**            | `{{ .ConfirmationURL }}` |
 | `change-email.html`      | **Change Email Address**   | `{{ .ConfirmationURL }}`, `{{ .Email }}`, `{{ .NewEmail }}` |
 | `reauthentication.html`  | **Reauthentication**       | `{{ .Token }}` (6-digit code, no URL) |
+| `password-changed.html`  | Security notifications → **Password changed** | `{{ .Email }}` (no URL — informational) |
+| `email-changed.html`     | Security notifications → **Email address changed** | `{{ .Email }}` (previous), `{{ .NewEmail }}` (no URL — informational) |
+
+> The last two are the **security notifications** toggled under
+> Authentication → Emails → *Security notifications* (Password changed / Email
+> address changed). They are informational — no action link. The email-change
+> notice is delivered to the **previous** address so the user can react if the
+> change wasn't authorized.
 
 > Set each template's **Subject** in the dashboard, e.g.
 > Confirm sign up → `Confirm your email` · Magic Link → `Your Samper Labs sign-in link` ·
