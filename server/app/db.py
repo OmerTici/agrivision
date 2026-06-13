@@ -41,7 +41,7 @@ async def get_pool() -> asyncpg.Pool:
 MATCH_SQL = """
 select a.id::text as animal_id, a.name, max(1 - (e.vec <=> $1::vector)) as sim
 from embeddings e
-join animals a on a.id = e.animal_id
+join animals a on a.id = e.animal_id and a.deleted_at is null
 where e.owner = $2::uuid
 group by a.id, a.name
 order by sim desc

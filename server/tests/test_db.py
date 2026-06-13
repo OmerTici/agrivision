@@ -29,3 +29,8 @@ def test_match_sql_is_owner_scoped_exact_scan():
     assert "e.owner = $2::uuid" in MATCH_SQL
     assert "<=>" in MATCH_SQL          # pgvector cosine distance
     assert "limit 5" in MATCH_SQL
+
+
+def test_match_sql_excludes_soft_deleted():
+    # Archived animals (deleted_at set) must never be returned by identify.
+    assert "a.deleted_at is null" in MATCH_SQL
