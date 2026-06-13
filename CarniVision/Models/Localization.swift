@@ -199,6 +199,8 @@ final class LanguageManager: ObservableObject {
             "camera.identify.waking": "Waking up recognizer…",
             "camera.identify.offline": "Network unavailable. Try again.",
             "camera.identify.retry": "Try again",
+            "server.status.connecting": "Connecting…",
+            "server.status.offline": "Server offline — tap to retry",
 
             // Recognition errors
             "recognition.error.notAuthenticated": "Not signed in.",
@@ -384,6 +386,8 @@ final class LanguageManager: ObservableObject {
             "camera.identify.waking": "Tanıyıcı uyandırılıyor…",
             "camera.identify.offline": "Ağ kullanılamıyor. Tekrar deneyin.",
             "camera.identify.retry": "Tekrar dene",
+            "server.status.connecting": "Bağlanılıyor…",
+            "server.status.offline": "Sunucu çevrimdışı — yeniden denemek için dokunun",
 
             // Recognition errors
             "recognition.error.notAuthenticated": "Oturum açılmamış.",
