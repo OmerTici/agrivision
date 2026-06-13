@@ -1,7 +1,8 @@
 import Foundation
 
 protocol RecognitionService {
-    /// Pings the embedder to start a container (cold-start budget); updates `isReady`.
+    /// Pings the embedder to start a container (cold-start budget); updates `status`
+    /// (from which `isReady` derives).
     func warmUp() async
     func identify(jpegData: Data) async throws -> IdentifyResult
     func enroll(animalID: String, muzzleJpegs: [Data], fullJpeg: Data?) async throws -> EnrollResult
