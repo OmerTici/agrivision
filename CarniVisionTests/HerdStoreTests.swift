@@ -116,4 +116,48 @@ final class HerdStoreTests: XCTestCase {
         XCTAssertEqual(store.animals[0].name, "Yeni")
         XCTAssertFalse(store.animals[0].muzzleRegistered)
     }
+
+    func testUpdateAnimalReplacesFieldsInPlace() async {
+        let animals = MockAnimalListing()
+        animals.records = [makeRecord(embeddingCount: 5)]
+        let store = HerdStore(animalSource: animals, eventSource: MockEventListing())
+        await store.load()
+
+        store.updateAnimal(id: animalID, name: "Renamed", tag: "TR-9999",
+                           breed: "Angus", sex: .male, birthDate: nil)
+
+        XCTAssertEqual(store.animals.count, 1)
+        XCTAssertEqual(store.animals[0].name, "Renamed")
+        XCTAssertEqual(store.animals[0].tag, "TR-9999")
+        XCTAssertEqual(store.animals[0].breed, "Angus")
+        XCTAssertEqual(store.animals[0].sex, .male)
+        XCTAssertTrue(store.animals[0].muzzleRegistered)  // derived flag preserved
+    }
+
+    func testRemoveAnimalDeletesAndRecordsRecentlyArchived() async {
+        let animals = MockAnimalListing()
+        animals.records = [makeRecord(embeddingCount: 5)]
+        let store = HerdStore(animalSource: animals, eventSource: MockEventListing())
+        await store.load()
+
+        store.removeAnimal(id: animalID)
+
+        XCTAssertTrue(store.animals.isEmpty)
+        XCTAssertEqual(store.recentlyArchived?.id, animalID)
+    }
+
+    func testRestoreAnimalReinsertsAndClearsRecentlyArchived() async {
+        let animals = MockAnimalListing()
+        animals.records = [makeRecord(embeddingCount: 5)]
+        let store = HerdStore(animalSource: animals, eventSource: MockEventListing())
+        await store.load()
+        let archived = store.animals[0]
+        store.removeAnimal(id: animalID)
+
+        store.restoreAnimal(archived)
+
+        XCTAssertEqual(store.animals.count, 1)
+        XCTAssertEqual(store.animals[0].id, animalID)
+        XCTAssertNil(store.recentlyArchived)
+    }
 }

@@ -148,6 +148,10 @@ final class HerdStore: ObservableObject {
     @Published var isLoading = false
     @Published var loadError: String?
 
+    /// The most recently archived animal, surfaced as an undo toast in the herd
+    /// list. Set by removeAnimal; cleared by restoreAnimal or the toast timeout.
+    @Published var recentlyArchived: Animal?
+
     private let animalSource: AnimalListing
     private let eventSource: EventListing
 
@@ -202,6 +206,41 @@ final class HerdStore: ObservableObject {
             createdAt: Date(), embeddingCount: 0
         )
         animals.insert(Animal(record: record), at: 0)
+    }
+
+    /// Optimistic in-place edit after AnimalRepository.update succeeds. The
+    /// derived muzzleRegistered flag is untouched (embeddings are unaffected).
+    func updateAnimal(
+        id: UUID, name: String, tag: String, breed: String,
+        sex: AnimalSex, birthDate: Date?
+    ) {
+        guard let idx = animals.firstIndex(where: { $0.id == id }) else { return }
+        animals[idx].name = name
+        animals[idx].tag = tag
+        animals[idx].breed = breed
+        animals[idx].sex = sex
+        animals[idx].birthDate = birthDate
+    }
+
+    /// Optimistic removal after AnimalRepository.softDelete succeeds. Stashes the
+    /// removed animal in recentlyArchived so the herd list can offer undo.
+    func removeAnimal(id: UUID) {
+        guard let idx = animals.firstIndex(where: { $0.id == id }) else { return }
+        recentlyArchived = animals.remove(at: idx)
+    }
+
+    /// Re-inserts a previously archived animal (undo), keeping created_at order.
+    func restoreAnimal(_ animal: Animal) {
+        if !animals.contains(where: { $0.id == animal.id }) {
+            animals.append(animal)
+            animals.sort { $0.createdAt > $1.createdAt }
+        }
+        if recentlyArchived?.id == animal.id { recentlyArchived = nil }
+    }
+
+    /// Dismisses the undo toast without restoring (timeout / manual close).
+    func clearRecentlyArchived() {
+        recentlyArchived = nil
     }
 
     /// Maps load failures to a localized banner message at the UI boundary
