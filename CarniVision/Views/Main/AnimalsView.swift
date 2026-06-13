@@ -240,8 +240,14 @@ private struct AnimalCard: View {
 
 struct AnimalDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: HerdStore
     @ObservedObject private var lang = LanguageManager.shared
-    let animal: Animal
+    @State private var animal: Animal
+    @State private var showEdit = false
+
+    init(animal: Animal) {
+        _animal = State(initialValue: animal)
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -256,6 +262,16 @@ struct AnimalDetailView: View {
         }
         .background(CarniColors.appBackground)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showEdit) {
+            EditAnimalScreen(animal: animal) { name, tag, breed, sex, birthDate in
+                animal.name = name
+                animal.tag = tag
+                animal.breed = breed
+                animal.sex = sex
+                animal.birthDate = birthDate
+            }
+            .environmentObject(store)
+        }
     }
 
     private var topBar: some View {
@@ -279,7 +295,19 @@ struct AnimalDetailView: View {
                 .font(CarniFont.semibold(16))
                 .foregroundStyle(CarniColors.purpleDark)
             Spacer()
-            Color.clear.frame(width: 38, height: 38)
+            Button {
+                showEdit = true
+            } label: {
+                Text(lang.t("detail.edit"))
+                    .font(CarniFont.semibold(14))
+                    .foregroundStyle(CarniColors.purple)
+                    .frame(height: 38)
+                    .padding(.horizontal, 12)
+                    .background(
+                        Capsule().fill(CarniColors.purple.opacity(0.1))
+                    )
+            }
+            .buttonStyle(.plain)
         }
     }
 

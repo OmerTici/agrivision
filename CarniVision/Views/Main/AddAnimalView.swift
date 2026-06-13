@@ -332,6 +332,125 @@ struct AnimalDetailsForm: View {
     }
 }
 
+/// Edits an existing animal's metadata. Presented as a sheet from
+/// AnimalDetailView. On save: PATCH via repository, then optimistic store
+/// update, then dismiss. The onSaved closure lets the detail view refresh.
+struct EditAnimalScreen: View {
+    @EnvironmentObject private var store: HerdStore
+    @ObservedObject private var lang = LanguageManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    private let repository = AnimalRepository()
+    let animalID: UUID
+    /// Called after a successful save with the new field values so the detail
+    /// view can update its locally displayed copy.
+    let onSaved: (_ name: String, _ tag: String, _ breed: String, _ sex: AnimalSex, _ birthDate: Date) -> Void
+
+    @State private var name: String
+    @State private var tag: String
+    @State private var breed: String
+    @State private var sex: AnimalSex
+    @State private var birthDate: Date
+    @State private var isSaving = false
+    @State private var saveError: String?
+
+    init(
+        animal: Animal,
+        onSaved: @escaping (_ name: String, _ tag: String, _ breed: String, _ sex: AnimalSex, _ birthDate: Date) -> Void
+    ) {
+        self.animalID = animal.id
+        self.onSaved = onSaved
+        _name = State(initialValue: animal.name)
+        _tag = State(initialValue: animal.tag)
+        _breed = State(initialValue: animal.breed)
+        _sex = State(initialValue: animal.sex)
+        _birthDate = State(initialValue: animal.birthDate ?? Date())
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && !tag.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(lang.t("edit.title"))
+                        .font(CarniFont.bold(24))
+                        .foregroundStyle(CarniColors.purpleDark)
+                    Text(lang.t("edit.subtitle"))
+                        .font(CarniFont.regular(13))
+                        .foregroundStyle(CarniColors.tabInactive)
+                }
+
+                AnimalDetailsForm(name: $name, tag: $tag, breed: $breed, sex: $sex, birthDate: $birthDate)
+                    .carniCard()
+
+                if let saveError {
+                    Text(saveError)
+                        .font(CarniFont.regular(13))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Button(action: save) {
+                    Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("edit.save"))
+                        .font(CarniFont.bold(16))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(canSave && !isSaving ? CarniColors.purple : CarniColors.purple.opacity(0.35))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSave || isSaving)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, CarniLayout.tabBarClearance)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(CarniColors.appBackground)
+    }
+
+    private func save() {
+        saveError = nil
+        isSaving = true
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let trimmedTag = tag.trimmingCharacters(in: .whitespaces)
+        let chosenBreed = breed
+        let chosenSex = sex
+        let chosenDOB = birthDate
+
+        Task {
+            do {
+                try await repository.update(
+                    animalID: animalID.uuidString,
+                    name: trimmedName, tag: trimmedTag, breed: chosenBreed,
+                    sex: chosenSex, birthDate: chosenDOB
+                )
+                await MainActor.run {
+                    store.updateAnimal(
+                        id: animalID, name: trimmedName, tag: trimmedTag,
+                        breed: chosenBreed, sex: chosenSex, birthDate: chosenDOB
+                    )
+                    onSaved(trimmedName, trimmedTag, chosenBreed, chosenSex, chosenDOB)
+                    isSaving = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    saveError = error.localizedDescription
+                }
+            }
+        }
+    }
+}
+
 extension String: Identifiable {
     public var id: String { self }
 }
