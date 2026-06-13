@@ -130,6 +130,34 @@ struct AnimalRepository {
         let id: UUID
     }
 
+    /// Row payload for editing an animal's metadata (PATCH /animals?id=eq.{id}).
+    private struct AnimalUpdate: Encodable {
+        let name: String
+        let tag: String
+        let breed: String
+        let sex: String
+        let birth_date: String
+    }
+
+    /// PATCH payload that sets deleted_at to a timestamp (soft delete).
+    private struct SoftDeletePayload: Encodable {
+        let deleted_at: String
+    }
+
+    /// PATCH payload that explicitly sets deleted_at to JSON null (restore).
+    /// Synthesized Encodable would omit a nil optional; encodeNil forces null.
+    private struct RestorePayload: Encodable {
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encodeNil(forKey: .deletedAt)
+        }
+        enum CodingKeys: String, CodingKey {
+            case deletedAt = "deleted_at"
+        }
+    }
+
+    private static let timestampFormatter = ISO8601DateFormatter()
+
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .iso8601)
@@ -174,8 +202,54 @@ struct AnimalRepository {
         let response = try await client
             .from("animals")
             .select("*, embeddings(count)")
+            .is("deleted_at", value: nil)   // active animals only (deleted_at is null)
             .order("created_at", ascending: false)
             .execute()
         return try JSONDecoder().decode([AnimalRecord].self, from: response.data)
+    }
+
+    /// Edits an animal's metadata. RLS scopes the PATCH to the owner.
+    func update(
+        animalID: String,
+        name: String,
+        tag: String,
+        breed: String,
+        sex: AnimalSex,
+        birthDate: Date
+    ) async throws {
+        let payload = AnimalUpdate(
+            name: name,
+            tag: tag,
+            breed: breed,
+            sex: sex.rawValue.lowercased(),
+            birth_date: Self.dateFormatter.string(from: birthDate)
+        )
+        try await client
+            .from("animals")
+            .update(payload)
+            .eq("id", value: animalID)
+            .execute()
+    }
+
+    /// Soft-deletes (archives) an animal by stamping deleted_at. Embeddings and
+    /// photos are retained; the row drops out of list() and identify matching.
+    func softDelete(animalID: String) async throws {
+        let payload = SoftDeletePayload(
+            deleted_at: Self.timestampFormatter.string(from: Date())
+        )
+        try await client
+            .from("animals")
+            .update(payload)
+            .eq("id", value: animalID)
+            .execute()
+    }
+
+    /// Restores a soft-deleted animal by clearing deleted_at (undo).
+    func restore(animalID: String) async throws {
+        try await client
+            .from("animals")
+            .update(RestorePayload())
+            .eq("id", value: animalID)
+            .execute()
     }
 }
