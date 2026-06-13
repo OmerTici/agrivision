@@ -36,14 +36,27 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
     }
 
     func warmUp() async {
+        // Debounce: if we confirmed online recently, skip the network entirely.
+        if status == .online, let last = lastOnlineCheck,
+           now().timeIntervalSince(last) < debounceWindow { return }
+
+        status = .connecting
         var request = URLRequest(url: baseURL.appendingPathComponent("health"))
         request.httpMethod = "GET"
         request.timeoutInterval = coldStartTimeout
         do {
             let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                status = .offline
+                return
+            }
             let health = try JSONDecoder().decode(HealthResponse.self, from: data)
-            status = health.modelLoaded ? .online : .offline
+            if health.modelLoaded {
+                status = .online
+                lastOnlineCheck = now()
+            } else {
+                status = .offline
+            }
         } catch {
             status = .offline
         }
