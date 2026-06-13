@@ -95,6 +95,7 @@ final class LanguageManager: ObservableObject {
             "event.noMatch": "Unknown animal — no match",
             "event.unknownAnimal": "Unknown animal",
             "common.retry": "Retry",
+            "common.close": "Close",
             "common.loadError": "Couldn't load your data.",
 
             // Animals
@@ -279,6 +280,7 @@ final class LanguageManager: ObservableObject {
             "event.noMatch": "Bilinmeyen hayvan — eşleşme yok",
             "event.unknownAnimal": "Bilinmeyen hayvan",
             "common.retry": "Tekrar dene",
+            "common.close": "Kapat",
             "common.loadError": "Verileriniz yüklenemedi.",
 
             // Animals

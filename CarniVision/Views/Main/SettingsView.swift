@@ -9,6 +9,9 @@ struct SettingsScreen: View {
     @State private var autoCaptureOn = true
     @State private var metricUnits = true
 
+    /// Set when presented as a sheet (from the Home gear); nil when embedded.
+    var onClose: (() -> Void)? = nil
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
@@ -26,9 +29,27 @@ struct SettingsScreen: View {
     }
 
     private var header: some View {
-        Text(lang.t("settings.title"))
-            .font(CarniFont.bold(24))
-            .foregroundStyle(CarniColors.purpleDark)
+        HStack {
+            Text(lang.t("settings.title"))
+                .font(CarniFont.bold(24))
+                .foregroundStyle(CarniColors.purpleDark)
+            Spacer()
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(CarniColors.purpleDark)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            Circle()
+                                .fill(Color.white)
+                                .shadow(color: CarniColors.purpleDark.opacity(0.08), radius: 8, y: 3)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(lang.t("common.close"))
+            }
+        }
     }
 
     private var profileCard: some View {

@@ -122,6 +122,7 @@ struct HomeScreen: View {
     @EnvironmentObject private var store: HerdStore
     @ObservedObject private var lang = LanguageManager.shared
     var onSeeAllAnimals: () -> Void = {}
+    var onOpenSettings: () -> Void = {}
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -160,15 +161,31 @@ struct HomeScreen: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(greeting)
-                .font(CarniFont.regular(14))
-                .foregroundStyle(CarniColors.tabInactive)
-            Text(signedInEmail)
-                .font(CarniFont.bold(22))
-                .foregroundStyle(CarniColors.purpleDark)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(greeting)
+                    .font(CarniFont.regular(14))
+                    .foregroundStyle(CarniColors.tabInactive)
+                Text(signedInEmail)
+                    .font(CarniFont.bold(22))
+                    .foregroundStyle(CarniColors.purpleDark)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            Spacer(minLength: 12)
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(CarniColors.purpleDark)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(Color.white)
+                            .shadow(color: CarniColors.purpleDark.opacity(0.08), radius: 8, y: 3)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(lang.t("settings.title"))
         }
     }
 

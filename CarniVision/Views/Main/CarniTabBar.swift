@@ -4,7 +4,6 @@ enum AppTab: Hashable {
     case home
     case animals
     case camera
-    case settings
 }
 
 /// White bar that is flat on the sides and rises into a soft-edged square hump
@@ -71,23 +70,16 @@ struct CarniTabBar: View {
                 tab: .home,
                 selected: $selected
             )
-            TabBarItem(
-                icon: "pawprint",
-                selectedIcon: "pawprint.fill",
-                label: lang.t("tab.animals"),
-                tab: .animals,
-                selected: $selected
-            )
 
             CameraTabButton {
                 selected = .camera
             }
 
             TabBarItem(
-                icon: "gearshape",
-                selectedIcon: "gearshape.fill",
-                label: lang.t("tab.settings"),
-                tab: .settings,
+                icon: "pawprint",
+                selectedIcon: "pawprint.fill",
+                label: lang.t("tab.animals"),
+                tab: .animals,
                 selected: $selected
             )
         }

@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject private var auth: AuthService
     @State private var selected: AppTab = .home
     @State private var showAddAnimal = false
+    @State private var showSettings = false
     @StateObject private var store = HerdStore()
 
     var body: some View {
@@ -21,13 +23,23 @@ struct MainTabView: View {
         // MainTabView only exists while signed in (RootView), so this runs on
         // sign-in and on each cold launch with a restored session.
         .task { await store.load() }
+        .sheet(isPresented: $showSettings) {
+            // Sheets present in a detached context; re-inject the objects
+            // Settings depends on so they survive the presentation boundary.
+            SettingsScreen(onClose: { showSettings = false })
+                .environmentObject(auth)
+                .environmentObject(store)
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         switch selected {
         case .home:
-            HomeScreen(onSeeAllAnimals: { selected = .animals })
+            HomeScreen(
+                onSeeAllAnimals: { selected = .animals },
+                onOpenSettings: { showSettings = true }
+            )
         case .animals:
             AnimalsScreen(showAddAnimal: $showAddAnimal)
         case .camera:
@@ -39,8 +51,6 @@ struct MainTabView: View {
                     showAddAnimal = true
                 }
             )
-        case .settings:
-            SettingsScreen()
         }
     }
 }
