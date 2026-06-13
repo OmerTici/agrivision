@@ -21,8 +21,6 @@ struct AddAnimalScreen: View {
     /// Set to the new animal id to trigger the enrollment camera.
     @State private var enrollAnimalID: String?
 
-    private let breeds = ["Holstein", "Angus", "Simmental", "Jersey", "Hereford", "Charolais", "Limousin"]
-
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && !tag.trimmingCharacters(in: .whitespaces).isEmpty
@@ -109,72 +107,7 @@ struct AddAnimalScreen: View {
 
     private var detailsCard: some View {
         VStack(spacing: 16) {
-            FormField(label: lang.t("add.name"), placeholder: lang.t("add.namePh"), text: $name)
-            FormField(label: lang.t("add.tag"), placeholder: lang.t("add.tagPh"), text: $tag)
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text(lang.t("add.breed"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
-                Menu {
-                    ForEach(breeds, id: \.self) { option in
-                        Button(option) { breed = option }
-                    }
-                } label: {
-                    HStack {
-                        Text(breed)
-                            .font(CarniFont.regular(15))
-                            .foregroundStyle(CarniColors.purpleDark)
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CarniColors.tabInactive)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(fieldBackground)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text(lang.t("detail.sex"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
-                HStack(spacing: 8) {
-                    ForEach(AnimalSex.allCases) { option in
-                        Button {
-                            sex = option
-                        } label: {
-                            Text(lang.t(option.key))
-                                .font(CarniFont.semibold(14))
-                                .foregroundStyle(sex == option ? .white : CarniColors.purple)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 11)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(sex == option ? CarniColors.purple : CarniColors.purple.opacity(0.08))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text(lang.t("add.dob"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
-                HStack {
-                    DatePicker("", selection: $birthDate, in: ...Date(), displayedComponents: .date)
-                        .labelsHidden()
-                        .tint(CarniColors.purple)
-                        .environment(\.locale, lang.language.locale)
-                    Spacer()
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(fieldBackground)
-            }
+            AnimalDetailsForm(name: $name, tag: $tag, breed: $breed, sex: $sex, birthDate: $birthDate)
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.weight"))
@@ -306,6 +239,95 @@ private struct FormField: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(CarniColors.appBackground)
                 )
+        }
+    }
+}
+
+/// Shared metadata inputs for Add and Edit: name, tag, breed, sex, birth date.
+/// Weight and muzzle scanning are Add-only and stay in AddAnimalScreen.
+struct AnimalDetailsForm: View {
+    @Binding var name: String
+    @Binding var tag: String
+    @Binding var breed: String
+    @Binding var sex: AnimalSex
+    @Binding var birthDate: Date
+    @ObservedObject private var lang = LanguageManager.shared
+
+    static let breeds = ["Holstein", "Angus", "Simmental", "Jersey", "Hereford", "Charolais", "Limousin"]
+
+    private var fieldBackground: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(CarniColors.appBackground)
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            FormField(label: lang.t("add.name"), placeholder: lang.t("add.namePh"), text: $name)
+            FormField(label: lang.t("add.tag"), placeholder: lang.t("add.tagPh"), text: $tag)
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(lang.t("add.breed"))
+                    .font(CarniFont.semibold(13))
+                    .foregroundStyle(CarniColors.purpleDark)
+                Menu {
+                    ForEach(Self.breeds, id: \.self) { option in
+                        Button(option) { breed = option }
+                    }
+                } label: {
+                    HStack {
+                        Text(breed)
+                            .font(CarniFont.regular(15))
+                            .foregroundStyle(CarniColors.purpleDark)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(CarniColors.tabInactive)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(fieldBackground)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(lang.t("detail.sex"))
+                    .font(CarniFont.semibold(13))
+                    .foregroundStyle(CarniColors.purpleDark)
+                HStack(spacing: 8) {
+                    ForEach(AnimalSex.allCases) { option in
+                        Button {
+                            sex = option
+                        } label: {
+                            Text(lang.t(option.key))
+                                .font(CarniFont.semibold(14))
+                                .foregroundStyle(sex == option ? .white : CarniColors.purple)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(sex == option ? CarniColors.purple : CarniColors.purple.opacity(0.08))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(lang.t("add.dob"))
+                    .font(CarniFont.semibold(13))
+                    .foregroundStyle(CarniColors.purpleDark)
+                HStack {
+                    DatePicker("", selection: $birthDate, in: ...Date(), displayedComponents: .date)
+                        .labelsHidden()
+                        .tint(CarniColors.purple)
+                        .environment(\.locale, lang.language.locale)
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(fieldBackground)
+            }
         }
     }
 }
