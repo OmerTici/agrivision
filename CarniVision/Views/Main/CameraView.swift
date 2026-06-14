@@ -1,4 +1,5 @@
 import AVFoundation
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -83,6 +84,8 @@ final class CameraModel: NSObject, ObservableObject {
     @Published var isProcessing = false
     /// Live tuning readout (top detection confidence + size).
     @Published var debugReadout = "Searching…"
+    /// Per-model confidences for the captured photo, shown on the result overlay.
+    @Published var captureConfidenceText = ""
     /// Seconds remaining on the hold countdown (nil when not counting down).
     @Published var countdown: Int?
 
@@ -114,19 +117,21 @@ final class CameraModel: NSObject, ObservableObject {
 
     // MARK: Cow gating (tune these)
     //
-    // The live gate uses a COCO YOLO11n detector and keys on the whole-animal
-    // "cow" box, so the geometry is loose: a close cow can fill the frame and
-    // touch the edges. The muzzle is localized separately on the captured still.
+    // The live gate uses a stock COCO YOLO11n detector and keys on the whole-animal
+    // "cow" box, so the geometry is loose: a close cow can fill the frame and touch
+    // the edges. The muzzle is localized separately on the captured still.
 
     private let edgeMargin: CGFloat = 0.0
     /// How long a qualifying cow must be held steady before auto-capture.
     private let holdDuration: TimeInterval = 2.0
 
-    /// Minimum confidence for the live preview gate. COCO "cow" scores run
-    /// ~0.3–0.9 depending on framing, so the floor is kept modest.
+    /// Minimum confidence for the live preview gate. Stock COCO "cow" scores run
+    /// ~0.3–0.9 depending on framing, so the floor is kept modest; the class
+    /// filter plus the geometry checks in `qualifiesCowLive` reject non-cows.
     private let cowConfidenceThreshold: Float = 0.35
-    /// Floor for cropping a muzzle from the captured still — a box below this is
-    /// noise, and failing the scan beats enrolling a junk crop.
+    /// Floor for cropping a muzzle from the captured still — the muzzle YOLO11n
+    /// export's NMS won't emit below 0.25, so this accepts what it detects and
+    /// lets a failed crop ask for a retry rather than enrolling a junk box.
     private let muzzleConfidenceThreshold: Float = 0.25
     private let minCowBoxWidth: CGFloat = 0.05
     private let minCowBoxHeight: CGFloat = 0.05
@@ -178,6 +183,7 @@ final class CameraModel: NSObject, ObservableObject {
             self.canManualCapture = false
             self.countdown = nil
             self.debugReadout = Self.idleReadout
+            self.captureConfidenceText = ""
         }
         resetLiveDetectionState()
     }
@@ -200,6 +206,7 @@ final class CameraModel: NSObject, ObservableObject {
             self.countdown = nil
             self.isProcessing = false
             self.debugReadout = Self.idleReadout
+            self.captureConfidenceText = ""
         }
         videoQueue.async { [weak self] in
             self?.isAutomaticMode = mode == .automatic
@@ -265,6 +272,18 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
+    /// Runs the full detection pipeline on an image picked from the photo library.
+    /// Lets you test the real models on clean files — no camera, no screen moiré.
+    func analyzeImported(_ image: UIImage) {
+        DispatchQueue.main.async {
+            self.lastPhoto = image
+            self.isProcessing = true
+            self.captureSucceeded = false
+            self.captureFailed = false
+        }
+        processCapturedPhoto(image)
+    }
+
     func capturePhoto() {
         if captureMode == .manual && !canManualCapture { return }
 
@@ -296,35 +315,45 @@ final class CameraModel: NSObject, ObservableObject {
             guard let self else { return }
 
             guard let cgImage = image?.normalizedCGImage() else {
-                self.finishFailure("camera.fail.read")
+                self.finishFailure("camera.fail.read", confidence: "")
+                return
+            }
+
+            // Confidences for this captured photo, shown on the result overlay.
+            let cowConf = self.cowDetector.detections(in: cgImage, orientation: .up)
+                .map(\.confidence).max() ?? 0
+
+            // Confirm it's actually a cow. On the live camera path the gate already
+            // ensured this; for imported test images it's the real check.
+            guard cowConf >= self.cowConfidenceThreshold else {
+                self.finishFailure(
+                    "camera.fail.notCow",
+                    confidence: String(format: "Cow %.2f", cowConf)
+                )
                 return
             }
 
             let detections = self.muzzleDetector.detections(in: cgImage, orientation: .up)
             let best = detections.max(by: { $0.confidence < $1.confidence })
+            let muzzleConf = best?.confidence ?? 0
+            let confText = String(format: "Cow %.2f · Muzzle %.2f", cowConf, muzzleConf)
+
             guard let best,
-                  best.confidence >= self.muzzleConfidenceThreshold,
+                  muzzleConf >= self.muzzleConfidenceThreshold,
                   let crop = self.muzzleDetector.cropMuzzle(from: cgImage, boundingBox: best.boundingBox)
             else {
-                self.finishFailure("camera.fail.crop")
+                self.finishFailure("camera.fail.crop", confidence: confText)
                 return
             }
 
-            let box = best.boundingBox
-            let readout = String(
-                format: "Photo muzzle conf %.2f · size %.0f%%×%.0f%%",
-                best.confidence,
-                box.width * 100,
-                box.height * 100
-            )
-            self.finishSuccess(crop: crop, readout: readout)
+            self.finishSuccess(crop: crop, confidence: confText)
         }
     }
 
-    private func finishSuccess(crop: UIImage, readout: String) {
+    private func finishSuccess(crop: UIImage, confidence: String) {
         DispatchQueue.main.async {
             self.croppedMuzzle = crop
-            self.debugReadout = readout
+            self.captureConfidenceText = confidence
             self.isProcessing = false
             self.captureFailed = false
             self.failureMessage = ""
@@ -332,10 +361,10 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
-    private func finishFailure(_ messageKey: String) {
+    private func finishFailure(_ messageKey: String, confidence: String) {
         DispatchQueue.main.async {
             self.croppedMuzzle = nil
-            self.debugReadout = messageKey
+            self.captureConfidenceText = confidence
             self.isProcessing = false
             self.captureSucceeded = false
             self.failureMessage = messageKey
@@ -411,6 +440,16 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             )
         } else if cowOk, let cowBest {
             readout = String(format: "Cow conf %.2f · settling…", cowBest.confidence)
+        } else if let cowBest {
+            // Detection present but below the gate or failing geometry — surface the
+            // raw score so the threshold can be tuned against real device numbers.
+            let box = cowBest.boundingBox
+            readout = String(
+                format: "Cow conf %.2f · size %.0f%%×%.0f%% · low",
+                cowBest.confidence,
+                box.width * 100,
+                box.height * 100
+            )
         } else {
             readout = Self.idleReadout
         }
@@ -517,6 +556,9 @@ struct CameraScreen: View {
     @State private var flash = false
     @State private var showHelp = false
     @State private var showResult = false
+    /// Debug/testing: pick an image from the library and run the real models on
+    /// it — bypasses the camera so screen-photo moiré can't corrupt the test.
+    @State private var testPickerItem: PhotosPickerItem?
 
     var body: some View {
         ZStack {
@@ -598,6 +640,16 @@ struct CameraScreen: View {
         .sheet(isPresented: $showResult) {
             MuzzleResultSheet(cropped: model.croppedMuzzle, full: model.lastPhoto)
         }
+        .onChange(of: testPickerItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    model.analyzeImported(image)
+                }
+                testPickerItem = nil
+            }
+        }
     }
 
     private var scanBracketColor: Color {
@@ -635,6 +687,17 @@ struct CameraScreen: View {
                 .buttonStyle(.plain)
 
                 Spacer()
+
+                // Test-from-Photos: runs the real models on a clean library image.
+                PhotosPicker(selection: $testPickerItem, matching: .images) {
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(CarniColors.white)
+                        .frame(width: 40, height: 40)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Circle())
+                }
+                .padding(.trailing, 10)
 
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -736,6 +799,17 @@ struct CameraScreen: View {
                     .foregroundStyle(CarniColors.purpleDark.opacity(0.85))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
+
+                if !model.captureConfidenceText.isEmpty {
+                    Text(model.captureConfidenceText)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(CarniColors.purpleDark.opacity(0.7))
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(
+                            Capsule().fill(CarniColors.purpleDark.opacity(0.06))
+                        )
+                }
 
                 if let cropped = model.croppedMuzzle {
                     Image(uiImage: cropped)

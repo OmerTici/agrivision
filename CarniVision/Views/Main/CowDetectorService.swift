@@ -8,8 +8,8 @@ struct CowDetection {
     let confidence: Float
 }
 
-/// Loads the COCO CoreML detector and returns only detections whose top class
-/// is "cow"; sheep, horse, dog, and everything else are discarded.
+/// Loads the stock COCO CoreML detector and returns only detections whose top
+/// class is "cow"; person, sheep, horse, dog, and everything else are discarded.
 final class CowDetectorService {
     private var visionModel: VNCoreMLModel?
 
@@ -21,7 +21,10 @@ final class CowDetectorService {
 
     private func loadModel() {
         let config = MLModelConfiguration()
-        config.computeUnits = .all
+        // CPU only: this YOLO export produces wrong/garbage scores on the iPhone
+        // Neural Engine (the .all path), so cows scored ~0 on device. CPU matches
+        // the verified offline behavior. YOLO11n is small enough to stay realtime.
+        config.computeUnits = .cpuOnly
 
         if let url = Bundle.main.url(forResource: "CowDetector", withExtension: "mlmodelc") {
             do {
@@ -68,7 +71,10 @@ final class CowDetectorService {
                 )
             }
         }
-        request.imageCropAndScaleOption = .scaleFill
+        // Letterbox (aspect-preserving) to match how YOLO was trained. scaleFill
+        // stretched the phone's portrait frame into a square, distorting the cow
+        // and dropping real cows below threshold; scaleFit keeps proportions.
+        request.imageCropAndScaleOption = .scaleFit
 
         do {
             try handler.perform([request])
@@ -79,8 +85,8 @@ final class CowDetectorService {
     }
 
     private static func isCow(_ observation: VNRecognizedObjectObservation) -> Bool {
-        // Accept only when the top class is COCO "cow"; sheep/horse/dog/etc. are
-        // rejected so they can't trigger the capture gate.
+        // Accept only when the top class is COCO "cow"; person/sheep/horse/dog/etc.
+        // are rejected so they can't trigger the capture gate.
         guard let top = observation.labels.max(by: { $0.confidence < $1.confidence }) else {
             return false
         }
