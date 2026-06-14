@@ -309,7 +309,10 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
-    /// Runs muzzle detection on the captured still and crops to the detected muzzle box.
+    /// Crops the muzzle from the captured still. The live cow gate already decided
+    /// whether to fire the shutter; here the muzzle detector is the sole authority —
+    /// no muzzle box, no crop, ask for a retry. This also rejects non-cow stills
+    /// (imported test images, mis-fires) because they have no muzzle to find.
     private func processCapturedPhoto(_ image: UIImage?) {
         videoQueue.async { [weak self] in
             guard let self else { return }
@@ -319,24 +322,10 @@ final class CameraModel: NSObject, ObservableObject {
                 return
             }
 
-            // Confidences for this captured photo, shown on the result overlay.
-            let cowConf = self.cowDetector.detections(in: cgImage, orientation: .up)
-                .map(\.confidence).max() ?? 0
-
-            // Confirm it's actually a cow. On the live camera path the gate already
-            // ensured this; for imported test images it's the real check.
-            guard cowConf >= self.cowConfidenceThreshold else {
-                self.finishFailure(
-                    "camera.fail.notCow",
-                    confidence: String(format: "Cow %.2f", cowConf)
-                )
-                return
-            }
-
             let detections = self.muzzleDetector.detections(in: cgImage, orientation: .up)
             let best = detections.max(by: { $0.confidence < $1.confidence })
             let muzzleConf = best?.confidence ?? 0
-            let confText = String(format: "Cow %.2f · Muzzle %.2f", cowConf, muzzleConf)
+            let confText = String(format: "Muzzle %.2f", muzzleConf)
 
             guard let best,
                   muzzleConf >= self.muzzleConfidenceThreshold,
