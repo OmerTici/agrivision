@@ -22,7 +22,8 @@ final class MuzzleDetectorService {
 
     private func loadModel() {
         let config = MLModelConfiguration()
-        config.computeUnits = .all
+        // CPU only — same Neural Engine issue as the cow detector (see notes there).
+        config.computeUnits = .cpuOnly
 
         // The .mlpackage is compiled into MuzzleDetector.mlmodelc inside the bundle.
         if let url = Bundle.main.url(forResource: "MuzzleDetector", withExtension: "mlmodelc") {
@@ -73,7 +74,8 @@ final class MuzzleDetectorService {
                 )
             }
         }
-        request.imageCropAndScaleOption = .scaleFill
+        // Letterbox to match YOLO training (see CowDetectorService for why).
+        request.imageCropAndScaleOption = .scaleFit
 
         do {
             try handler.perform([request])
