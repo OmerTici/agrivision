@@ -4,7 +4,7 @@
 
 **Goal:** Re-warm the scale-to-zero embedder on user activity (sign-in + app foreground) instead of only at launch, and surface a non-blocking status pill that is silent when healthy and only appears when the server is connecting or offline.
 
-**Architecture:** `CloudRunRecognitionService` gains a `ServerStatus` enum (`unknown / connecting / online / offline`); `isReady` becomes derived from it. `warmUp()` drives the states and debounces re-checks via an injectable clock. `MainTabView` (the signed-in shell) triggers `warmUp()` on appear (sign-in / launch-with-session) and on `scenePhase == .active` (foreground return), and overlays a `ServerStatusPill` that renders only while connecting or offline. The launch-time warmup in `CarniVisionApp` is removed.
+**Architecture:** `CloudRunRecognitionService` gains a `ServerStatus` enum (`unknown / connecting / online / offline`); `isReady` becomes derived from it. `warmUp()` drives the states and debounces re-checks via an injectable clock. `MainTabView` (the signed-in shell) triggers `warmUp()` on appear (sign-in / launch-with-session) and on `scenePhase == .active` (foreground return), and overlays a `ServerStatusPill` that renders only while connecting or offline. The launch-time warmup in `AgriVisionApp` is removed.
 
 **Tech Stack:** SwiftUI, supabase-swift, XCTest with `MockURLProtocol`. Spec: `docs/superpowers/specs/2026-06-13-server-status-pill-design.md`.
 
@@ -12,11 +12,11 @@
 
 ## File Structure
 
-- **Modify** `CarniVision/Services/CloudRunRecognitionService.swift` — add `ServerStatus` enum, `@Published status`, derived `isReady`, injectable `now` clock, debounced state-driving `warmUp()`.
-- **Modify** `CarniVision/CarniVisionApp.swift:28-31` — drop the launch-time `warmUp()` call (keep `auth.bootstrap()`).
-- **Modify** `CarniVision/Models/Localization.swift` — add `server.status.connecting` / `server.status.offline` keys in the English and Turkish tables.
-- **Modify** `CarniVision/Views/Main/MainTabView.swift` — inject `recognition`, observe `scenePhase`, call `warmUp()` on appear + foreground, overlay the pill, and define the private `ServerStatusPill` view.
-- **Create** `CarniVisionTests/ServerStatusTests.swift` — unit tests for state transitions and debounce. (Test target is filesystem-synchronized, so this auto-registers — no pbxproj edit.)
+- **Modify** `AgriVision/Services/CloudRunRecognitionService.swift` — add `ServerStatus` enum, `@Published status`, derived `isReady`, injectable `now` clock, debounced state-driving `warmUp()`.
+- **Modify** `AgriVision/AgriVisionApp.swift:28-31` — drop the launch-time `warmUp()` call (keep `auth.bootstrap()`).
+- **Modify** `AgriVision/Models/Localization.swift` — add `server.status.connecting` / `server.status.offline` keys in the English and Turkish tables.
+- **Modify** `AgriVision/Views/Main/MainTabView.swift` — inject `recognition`, observe `scenePhase`, call `warmUp()` on appear + foreground, overlay the pill, and define the private `ServerStatusPill` view.
+- **Create** `AgriVisionTests/ServerStatusTests.swift` — unit tests for state transitions and debounce. (Test target is filesystem-synchronized, so this auto-registers — no pbxproj edit.)
 
 **pbxproj note:** All new *app-target* types live inside existing files (`ServerStatus` in `CloudRunRecognitionService.swift`, `ServerStatusPill` in `MainTabView.swift`), so NO manual pbxproj registration is required. Only the test file is new, and the test target auto-syncs.
 
@@ -25,17 +25,17 @@
 ## Task 1: ServerStatus enum + derived isReady + injectable clock
 
 **Files:**
-- Modify: `CarniVision/Services/CloudRunRecognitionService.swift`
-- Modify: `CarniVision/Views/Main/CameraView.swift:1515` (the `.preview` helper assigns `isReady`, which becomes read-only)
-- Test: `CarniVisionTests/ServerStatusTests.swift` (create)
+- Modify: `AgriVision/Services/CloudRunRecognitionService.swift`
+- Modify: `AgriVision/Views/Main/CameraView.swift:1515` (the `.preview` helper assigns `isReady`, which becomes read-only)
+- Test: `AgriVisionTests/ServerStatusTests.swift` (create)
 
 - [ ] **Step 1: Write the failing test**
 
-Create `CarniVisionTests/ServerStatusTests.swift`:
+Create `AgriVisionTests/ServerStatusTests.swift`:
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 /// Mutable clock so debounce windows can be advanced deterministically.
 final class TestClock {
@@ -79,12 +79,12 @@ final class ServerStatusTests: XCTestCase {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `xcodebuild test -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:CarniVisionTests/ServerStatusTests/testStatusDefaultsToUnknownAndIsReadyDerives`
+Run: `xcodebuild test -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:AgriVisionTests/ServerStatusTests/testStatusDefaultsToUnknownAndIsReadyDerives`
 Expected: FAIL to compile — `ServerStatus`, the `now:` init parameter, and `status` do not exist yet.
 
 - [ ] **Step 3: Add the enum, status property, derived isReady, and clock**
 
-In `CarniVision/Services/CloudRunRecognitionService.swift`, add the enum just above the class declaration (after the `import Foundation` line):
+In `AgriVision/Services/CloudRunRecognitionService.swift`, add the enum just above the class declaration (after the `import Foundation` line):
 
 ```swift
 /// Lifecycle of the scale-to-zero embedder as the app understands it.
@@ -126,7 +126,7 @@ init(baseURL: URL, session: URLSession = .shared,
 
 - [ ] **Step 4: Fix the preview helper that assigned the now-read-only isReady**
 
-`isReady` is now a computed get-only property, so `CameraView.swift:1515` no longer compiles. In `CarniVision/Views/Main/CameraView.swift`, in the `static var preview` helper, change:
+`isReady` is now a computed get-only property, so `CameraView.swift:1515` no longer compiles. In `AgriVision/Views/Main/CameraView.swift`, in the `static var preview` helper, change:
 
 ```swift
         s.isReady = true
@@ -140,13 +140,13 @@ to:
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `xcodebuild test -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:CarniVisionTests/ServerStatusTests/testStatusDefaultsToUnknownAndIsReadyDerives`
+Run: `xcodebuild test -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:AgriVisionTests/ServerStatusTests/testStatusDefaultsToUnknownAndIsReadyDerives`
 Expected: PASS (and the project compiles — the preview fix is required for the test target to build).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add CarniVision/Services/CloudRunRecognitionService.swift CarniVision/Views/Main/CameraView.swift CarniVisionTests/ServerStatusTests.swift
+git add AgriVision/Services/CloudRunRecognitionService.swift AgriVision/Views/Main/CameraView.swift AgriVisionTests/ServerStatusTests.swift
 git commit -m "feat(ios): add ServerStatus enum and derive isReady"
 ```
 
@@ -155,8 +155,8 @@ git commit -m "feat(ios): add ServerStatus enum and derive isReady"
 ## Task 2: warmUp drives the states with debounce
 
 **Files:**
-- Modify: `CarniVision/Services/CloudRunRecognitionService.swift` (the `warmUp()` method)
-- Test: `CarniVisionTests/ServerStatusTests.swift`
+- Modify: `AgriVision/Services/CloudRunRecognitionService.swift` (the `warmUp()` method)
+- Test: `AgriVisionTests/ServerStatusTests.swift`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -245,12 +245,12 @@ func testDebounceAlwaysChecksWhenNotOnline() async {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `xcodebuild test -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:CarniVisionTests/ServerStatusTests`
+Run: `xcodebuild test -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:AgriVisionTests/ServerStatusTests`
 Expected: the new `testWarmUp*` / `testDebounce*` cases FAIL (current `warmUp()` sets `isReady` on a removed property path and never sets `.offline` / debounces).
 
 - [ ] **Step 3: Replace warmUp with the state-driving, debounced version**
 
-In `CarniVision/Services/CloudRunRecognitionService.swift`, replace the entire `warmUp()` method with:
+In `AgriVision/Services/CloudRunRecognitionService.swift`, replace the entire `warmUp()` method with:
 
 ```swift
 func warmUp() async {
@@ -283,13 +283,13 @@ func warmUp() async {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `xcodebuild test -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:CarniVisionTests/ServerStatusTests`
+Run: `xcodebuild test -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:AgriVisionTests/ServerStatusTests`
 Expected: PASS (all `ServerStatusTests` green).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Services/CloudRunRecognitionService.swift CarniVisionTests/ServerStatusTests.swift
+git add AgriVision/Services/CloudRunRecognitionService.swift AgriVisionTests/ServerStatusTests.swift
 git commit -m "feat(ios): drive warmUp through ServerStatus with debounce"
 ```
 
@@ -298,11 +298,11 @@ git commit -m "feat(ios): drive warmUp through ServerStatus with debounce"
 ## Task 3: Localization strings for the pill
 
 **Files:**
-- Modify: `CarniVision/Models/Localization.swift`
+- Modify: `AgriVision/Models/Localization.swift`
 
 - [ ] **Step 1: Add English keys**
 
-In `CarniVision/Models/Localization.swift`, in the `.english` table, immediately after the line `"camera.identify.retry": "Try again",` (around line 201) add:
+In `AgriVision/Models/Localization.swift`, in the `.english` table, immediately after the line `"camera.identify.retry": "Try again",` (around line 201) add:
 
 ```swift
             "server.status.connecting": "Connecting…",
@@ -320,13 +320,13 @@ In the `.turkish` table, immediately after the line `"camera.identify.retry": "T
 
 - [ ] **Step 3: Build to verify the table still compiles**
 
-Run: `xcodebuild build -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`
+Run: `xcodebuild build -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`
 Expected: BUILD SUCCEEDED
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Models/Localization.swift
+git add AgriVision/Models/Localization.swift
 git commit -m "feat(ios): add server status pill strings (en/tr)"
 ```
 
@@ -335,14 +335,14 @@ git commit -m "feat(ios): add server status pill strings (en/tr)"
 ## Task 4: Wire triggers + render the pill, drop launch warmup
 
 **Files:**
-- Modify: `CarniVision/CarniVisionApp.swift:28-31`
-- Modify: `CarniVision/Views/Main/MainTabView.swift`
+- Modify: `AgriVision/AgriVisionApp.swift:28-31`
+- Modify: `AgriVision/Views/Main/MainTabView.swift`
 
 This task is UI wiring verified by build + on-device behavior (the trigger/pill logic itself is covered by Tasks 1–2).
 
 - [ ] **Step 1: Remove the launch-time warmup**
 
-In `CarniVision/CarniVisionApp.swift`, change the `.task` block (lines 28-31) from:
+In `AgriVision/AgriVisionApp.swift`, change the `.task` block (lines 28-31) from:
 
 ```swift
                 .task {
@@ -363,7 +363,7 @@ to:
 
 - [ ] **Step 2: Inject recognition + scenePhase into MainTabView**
 
-In `CarniVision/Views/Main/MainTabView.swift`, add these properties at the top of `struct MainTabView` (after `@EnvironmentObject private var auth: AuthService`):
+In `AgriVision/Views/Main/MainTabView.swift`, add these properties at the top of `struct MainTabView` (after `@EnvironmentObject private var auth: AuthService`):
 
 ```swift
     @EnvironmentObject private var recognition: CloudRunRecognitionService
@@ -396,7 +396,7 @@ with:
 
 - [ ] **Step 4: Overlay the pill**
 
-In the same file, add the pill as the top-most layer of the root `ZStack`. Immediately before the closing brace of the `ZStack(alignment: .bottom) { ... }` (after the `if selected != .camera { CarniTabBar(...) }` block), add:
+In the same file, add the pill as the top-most layer of the root `ZStack`. Immediately before the closing brace of the `ZStack(alignment: .bottom) { ... }` (after the `if selected != .camera { AgriTabBar(...) }` block), add:
 
 ```swift
             ServerStatusPill(status: recognition.status,
@@ -442,7 +442,7 @@ private struct ServerStatusPill: View {
                 ProgressView().tint(.white).scaleEffect(0.8)
             }
             Text(text)
-                .font(CarniFont.semibold(13))
+                .font(AgriFont.semibold(13))
                 .foregroundStyle(.white)
         }
         .padding(.vertical, 8)
@@ -457,7 +457,7 @@ private struct ServerStatusPill: View {
 
 - [ ] **Step 6: Build and run the app**
 
-Run: `xcodebuild build -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`
+Run: `xcodebuild build -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`
 Expected: BUILD SUCCEEDED
 
 Then run on the "iPhone 17 Pro" simulator and verify by behavior:
@@ -468,13 +468,13 @@ Then run on the "iPhone 17 Pro" simulator and verify by behavior:
 
 - [ ] **Step 7: Run the full test suite**
 
-Run: `xcodebuild test -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`
+Run: `xcodebuild test -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`
 Expected: all tests PASS (existing suite + `ServerStatusTests`).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add CarniVision/CarniVisionApp.swift CarniVision/Views/Main/MainTabView.swift
+git add AgriVision/AgriVisionApp.swift AgriVision/Views/Main/MainTabView.swift
 git commit -m "feat(ios): foreground-driven warmup and server status pill"
 ```
 

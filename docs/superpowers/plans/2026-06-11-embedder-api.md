@@ -1,8 +1,8 @@
-# CarniVision Embedder API Implementation Plan
+# AgriVision Embedder API Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the stateless FastAPI embedder service (`server/`) that adds muzzle enroll + 1:N identify to CarniVision, per the approved spec at `docs/superpowers/specs/2026-06-11-carnivision-embedder-api-design.md`.
+**Goal:** Build the stateless FastAPI embedder service (`server/`) that adds muzzle enroll + 1:N identify to AgriVision, per the approved spec at `docs/superpowers/specs/2026-06-11-carnivision-embedder-api-design.md`.
 
 **Architecture:** Cloud Run container loads MiewID-msv3 once at startup; every request verifies a Supabase HS256 JWT, embeds JPEG muzzle crops (2152-d, L2-normalized), and runs exact-scan cosine SQL against Supabase Postgres (pgvector, no index — intentional). Images go to Supabase Storage; all state lives in Supabase.
 
@@ -969,7 +969,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="CarniVision Embedder", lifespan=lifespan)
+app = FastAPI(title="AgriVision Embedder", lifespan=lifespan)
 
 
 def _decode_jpegs(uploads: list[bytes]) -> list[Image.Image]:
@@ -1068,7 +1068,7 @@ git commit -m "feat(server): FastAPI routes for healthz, identify, enroll"
 
 `server/sql/schema.sql`:
 ```sql
--- CarniVision embedder schema. Apply once in the Supabase SQL editor.
+-- AgriVision embedder schema. Apply once in the Supabase SQL editor.
 create extension if not exists vector;
 
 create table if not exists animals (
@@ -1308,7 +1308,7 @@ Expected: `{"status":"ok","model_loaded":true}`. Stop the container afterwards (
 
 `server/README.md`:
 ```markdown
-# CarniVision Embedder API
+# AgriVision Embedder API
 
 Stateless FastAPI service: MiewID-msv3 muzzle embeddings (2152-d) + exact-scan
 pgvector matching in Supabase. Spec:

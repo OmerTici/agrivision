@@ -56,7 +56,7 @@ falls back to the bundled copy automatically, so the preview always shows the lo
 
 - **Brand strings** — search/replace `Samper Labs`, `samperlabs.com`, and the
   footer tagline `the operating system for meat production` if the product name
-  in-app differs (e.g. CarniVision). One pass per file.
+  in-app differs (e.g. AgriVision). One pass per file.
 - **Colors** — primary action/links `#1C84E0` (hover `#1668B8`); gradient stops
   `#2BC07C` / `#1C9FD6` / `#1C84E0`; headings `#0E2A47`; page bg `#F4F7FA`.
 - **Logo size** — the `<img width="170">` in each header; height auto-scales.
@@ -101,7 +101,7 @@ Redirect URLs** (it's already used for the existing PKCE flow).
 ## 3. iOS — trigger the OAuth flow
 
 The app already uses `supabase-swift` with PKCE and handles
-`carnivision://auth-callback` (see `CarniVisionApp.swift` `onOpenURL` →
+`carnivision://auth-callback` (see `AgriVisionApp.swift` `onOpenURL` →
 `AuthService.handleDeepLink`). Add a Google button that calls:
 
 ```swift

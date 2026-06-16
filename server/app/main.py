@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="CarniVision Embedder", lifespan=lifespan)
+app = FastAPI(title="AgriVision Embedder", lifespan=lifespan)
 
 
 def _decode_jpegs(uploads: list[bytes]) -> list[Image.Image]:

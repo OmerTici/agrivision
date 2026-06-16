@@ -6,7 +6,7 @@
 
 ## Goal
 
-Remove all demo/dummy data from the CarniVision iOS app and make every screen reflect reality: the user's enrolled animals (with the photos they actually took), recent enroll/identify actions, and search. Strip UI for data that has no backend (weights, health status, scan urgency, charts).
+Remove all demo/dummy data from the AgriVision iOS app and make every screen reflect reality: the user's enrolled animals (with the photos they actually took), recent enroll/identify actions, and search. Strip UI for data that has no backend (weights, health status, scan urgency, charts).
 
 ## Decisions (made with the user)
 

@@ -1,4 +1,4 @@
-# CarniVision Embedder API
+# AgriVision Embedder API
 
 Stateless FastAPI service: MiewID-msv3 muzzle embeddings (2152-d) + exact-scan
 pgvector matching in Supabase. Spec:

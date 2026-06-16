@@ -1,8 +1,8 @@
-# CarniVision iOS Recognition Integration Implementation Plan
+# AgriVision iOS Recognition Integration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Wire the existing CarniVision SwiftUI app to the live Cloud Run embedder so a farmer can enroll a cow's muzzle (5-photo guided burst + 1 full-body shot) and identify animals in real time, replacing the fake auth flag with real Supabase sessions.
+**Goal:** Wire the existing AgriVision SwiftUI app to the live Cloud Run embedder so a farmer can enroll a cow's muzzle (5-photo guided burst + 1 full-body shot) and identify animals in real time, replacing the fake auth flag with real Supabase sessions.
 
 **Architecture:** A thin client layer sits beside the unchanged camera pipeline: `SupabaseClientProvider` vends a configured SDK client; `AuthService` (ObservableObject) owns the session and gates `RootView`; `AnimalRepository` inserts animal rows; `RecognitionService` (protocol + `CloudRunRecognitionService`) talks multipart/form-data to the embedder over `URLSession` with a Bearer JWT. The existing `CameraModel` gains an opt-in enrollment session (collect 5 crops + 1 full frame) and an identify call; everything is injected so SwiftUI previews and unit tests use mocks.
 
@@ -12,14 +12,14 @@
 
 ## Ground-truth facts (verified against the repo, do not re-derive)
 
-- Xcode project: `CarniVision.xcodeproj`, `objectVersion = 56`, single app target/scheme **`CarniVision`**, bundle `com.carnivision.app`, team `Z23895JP8U`, `IPHONEOS_DEPLOYMENT_TARGET = 17.0`, `SWIFT_VERSION = 5.0`. There is currently **no test target** and **no SPM package** (`XCRemoteSwiftPackageReference` count = 0).
-- App entry: `CarniVision/CarniVisionApp.swift` → `RootView()`.
+- Xcode project: `AgriVision.xcodeproj`, `objectVersion = 56`, single app target/scheme **`AgriVision`**, bundle `com.agrivision.app`, team `Z23895JP8U`, `IPHONEOS_DEPLOYMENT_TARGET = 17.0`, `SWIFT_VERSION = 5.0`. There is currently **no test target** and **no SPM package** (`XCRemoteSwiftPackageReference` count = 0).
+- App entry: `AgriVision/AgriVisionApp.swift` → `RootView()`.
 - `RootView` gates on a fake `@State private var isAuthenticated = false` and shows `LandingView { … isAuthenticated = true }`.
 - `LandingView` hosts `SignInForm` and `SignUpForm`, each taking `onBack`, `onSwitch…`, and `onAuthenticated` closures. `SignInForm.handleLogin()` and `SignUpForm.handleSignUp()` are `print` stubs that immediately call `onAuthenticated()`.
 - `MainTabView` owns `@StateObject private var store = HerdStore()` and renders `AddAnimalScreen()` for `.addAnimal` and `CameraScreen(onClose:)` for `.camera`.
-- `CameraModel` (in `CarniVision/Views/Main/CameraView.swift`) publishes `lastPhoto`, `croppedMuzzle`, `captureSucceeded`, `captureFailed`, `failureMessage`, `isProcessing`, `countdown`, `faceVisible`, `canManualCapture`, `debugReadout`. Capture flow: `capturePhoto()` → `PhotoCaptureDelegate` → `processCapturedPhoto` → `finishSuccess(crop:readout:)` / `finishFailure(_:)`. Auto-capture is gated by `processAutomaticFrame`; `hasAutoCaptured` blocks further frames.
+- `CameraModel` (in `AgriVision/Views/Main/CameraView.swift`) publishes `lastPhoto`, `croppedMuzzle`, `captureSucceeded`, `captureFailed`, `failureMessage`, `isProcessing`, `countdown`, `faceVisible`, `canManualCapture`, `debugReadout`. Capture flow: `capturePhoto()` → `PhotoCaptureDelegate` → `processCapturedPhoto` → `finishSuccess(crop:readout:)` / `finishFailure(_:)`. Auto-capture is gated by `processAutomaticFrame`; `hasAutoCaptured` blocks further frames.
 - `UIImage.normalizedCGImage()` already exists (in `MuzzleDetectorService.swift`).
-- Localization: `LanguageManager.shared.t(_:)` with two in-code dictionaries (`.english`, `.turkish`) in `CarniVision/Models/Localization.swift`. Add keys to **both** dictionaries.
+- Localization: `LanguageManager.shared.t(_:)` with two in-code dictionaries (`.english`, `.turkish`) in `AgriVision/Models/Localization.swift`. Add keys to **both** dictionaries.
 - `AddAnimalScreen` form fields: `name`, `tag`, `breed` (String from `breeds`), `sex: AnimalSex` (`.female`/`.male`), `birthDate: Date`, `weightText`. It calls `store.addAnimal(…)` then shows a toast.
 - `HerdStore.addAnimal(name:tag:breed:sex:birthDate:initialWeightKg:muzzleRegistered:)` inserts an in-memory `Animal`.
 - **Server contract (from `server/app/main.py` + `server/app/schemas.py`):**
@@ -36,30 +36,30 @@
 ## File Structure
 
 **Create:**
-- `CarniVision/Config/AppConfig.swift` — reads `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `EMBEDDER_URL` from Info.plist; one typed accessor.
-- `CarniVision/Services/SupabaseClientProvider.swift` — singleton vending the configured `SupabaseClient`.
-- `CarniVision/Services/AuthService.swift` — ObservableObject wrapping Supabase Auth (`signIn`/`signUp`/`signOut`/`session`/`accessToken`/`errorMessage`).
-- `CarniVision/Services/AnimalRepository.swift` — inserts a row into the `animals` table; returns the new UUID string.
-- `CarniVision/Services/RecognitionModels.swift` — `IdentifyResult`, `EnrollResult`, `Candidate`, `RecognitionError`.
-- `CarniVision/Services/MultipartFormData.swift` — pure multipart/form-data encoder (TDD'd).
-- `CarniVision/Services/RecognitionService.swift` — `RecognitionService` protocol + `MockRecognitionService`.
-- `CarniVision/Services/CloudRunRecognitionService.swift` — URLSession implementation (`warmUp`/`identify`/`enroll`, Bearer token, JPEG 0.85, full-frame downscale ≤ 2048 px).
-- `CarniVision/Services/ImageEncoding.swift` — `UIImage` JPEG-encode + downscale helpers shared by the service.
-- `CarniVisionTests/MultipartFormDataTests.swift` — unit tests for the encoder.
-- `CarniVisionTests/RecognitionDecodingTests.swift` — JSON→`IdentifyResult`/`EnrollResult` decoding + MockURLProtocol round-trip (field names, Bearer header).
-- `CarniVisionTests/AuthServiceTests.swift` — session/errorMessage transitions through a stubbed auth client.
+- `AgriVision/Config/AppConfig.swift` — reads `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `EMBEDDER_URL` from Info.plist; one typed accessor.
+- `AgriVision/Services/SupabaseClientProvider.swift` — singleton vending the configured `SupabaseClient`.
+- `AgriVision/Services/AuthService.swift` — ObservableObject wrapping Supabase Auth (`signIn`/`signUp`/`signOut`/`session`/`accessToken`/`errorMessage`).
+- `AgriVision/Services/AnimalRepository.swift` — inserts a row into the `animals` table; returns the new UUID string.
+- `AgriVision/Services/RecognitionModels.swift` — `IdentifyResult`, `EnrollResult`, `Candidate`, `RecognitionError`.
+- `AgriVision/Services/MultipartFormData.swift` — pure multipart/form-data encoder (TDD'd).
+- `AgriVision/Services/RecognitionService.swift` — `RecognitionService` protocol + `MockRecognitionService`.
+- `AgriVision/Services/CloudRunRecognitionService.swift` — URLSession implementation (`warmUp`/`identify`/`enroll`, Bearer token, JPEG 0.85, full-frame downscale ≤ 2048 px).
+- `AgriVision/Services/ImageEncoding.swift` — `UIImage` JPEG-encode + downscale helpers shared by the service.
+- `AgriVisionTests/MultipartFormDataTests.swift` — unit tests for the encoder.
+- `AgriVisionTests/RecognitionDecodingTests.swift` — JSON→`IdentifyResult`/`EnrollResult` decoding + MockURLProtocol round-trip (field names, Bearer header).
+- `AgriVisionTests/AuthServiceTests.swift` — session/errorMessage transitions through a stubbed auth client.
 - `README.md` (append section) — operator setup: filling `SUPABASE_ANON_KEY`.
 
 **Modify:**
-- `CarniVision/Info.plist` — add `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `EMBEDDER_URL` keys (anon key placeholder).
-- `CarniVision/CarniVisionApp.swift` — construct shared `AuthService` + `RecognitionService`, inject as environment objects, fire `warmUp()` on launch.
-- `CarniVision/Views/RootView.swift` — gate on `auth.session != nil` instead of the fake flag.
-- `CarniVision/Views/LoginView.swift` — real `signIn`, inline error, loading state.
-- `CarniVision/Views/SignUpView.swift` — real `signUp`, inline error, loading state.
-- `CarniVision/Views/Main/AddAnimalView.swift` — on Save: create row in Supabase, then present `CameraScreen` in enrollment mode with the new `animalID`.
-- `CarniVision/Views/Main/CameraView.swift` — `CameraModel` gains enrollment session state + `identify`/`enroll` calls; `CameraScreen` gains enrollment progress ring, full-body prompt, identify result card.
-- `CarniVision/Models/Localization.swift` — add EN/TR strings for new UI.
-- `CarniVision.xcodeproj/project.pbxproj` — register new source files, the supabase-swift package, and the new test target (via Xcode GUI per Task 1/Task 2 instructions).
+- `AgriVision/Info.plist` — add `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `EMBEDDER_URL` keys (anon key placeholder).
+- `AgriVision/AgriVisionApp.swift` — construct shared `AuthService` + `RecognitionService`, inject as environment objects, fire `warmUp()` on launch.
+- `AgriVision/Views/RootView.swift` — gate on `auth.session != nil` instead of the fake flag.
+- `AgriVision/Views/LoginView.swift` — real `signIn`, inline error, loading state.
+- `AgriVision/Views/SignUpView.swift` — real `signUp`, inline error, loading state.
+- `AgriVision/Views/Main/AddAnimalView.swift` — on Save: create row in Supabase, then present `CameraScreen` in enrollment mode with the new `animalID`.
+- `AgriVision/Views/Main/CameraView.swift` — `CameraModel` gains enrollment session state + `identify`/`enroll` calls; `CameraScreen` gains enrollment progress ring, full-body prompt, identify result card.
+- `AgriVision/Models/Localization.swift` — add EN/TR strings for new UI.
+- `AgriVision.xcodeproj/project.pbxproj` — register new source files, the supabase-swift package, and the new test target (via Xcode GUI per Task 1/Task 2 instructions).
 
 ---
 
@@ -68,44 +68,44 @@
 These are Xcode-GUI operations (the executor must perform them in Xcode; they cannot be done reliably by hand-editing `project.pbxproj`). Each ends with a verification command.
 
 **Files:**
-- Modify: `CarniVision.xcodeproj/project.pbxproj` (written by Xcode)
+- Modify: `AgriVision.xcodeproj/project.pbxproj` (written by Xcode)
 
 - [x] **Step 1: Open the project**
 
 ```bash
-xed CarniVision.xcodeproj
+xed AgriVision.xcodeproj
 ```
 
 - [x] **Step 2: Add the supabase-swift package, pinned**
 
-In Xcode: **File ▸ Add Package Dependencies…** → enter `https://github.com/supabase/supabase-swift` → Dependency Rule: **Exact Version** `2.5.1` (pin; do not use "Up to Next Major"). Add. When prompted for products, check **only `Supabase`** and add it to the **CarniVision** app target.
+In Xcode: **File ▸ Add Package Dependencies…** → enter `https://github.com/supabase/supabase-swift` → Dependency Rule: **Exact Version** `2.5.1` (pin; do not use "Up to Next Major"). Add. When prompted for products, check **only `Supabase`** and add it to the **AgriVision** app target.
 
 > If `2.5.1` is unavailable in your SPM cache, pick the newest available 2.x exact version and record it in the README setup note. The API used in this plan (`SupabaseClient(supabaseURL:supabaseKey:)`, `client.auth.signIn(email:password:)`, `client.auth.signUp(email:password:)`, `client.auth.signOut()`, `client.auth.session`, `auth.authStateChanges`, `client.from("animals").insert(...).select().single().execute()`) is stable across supabase-swift 2.x.
 
 - [x] **Step 3: Add a unit-test target**
 
-In Xcode: **File ▸ New ▸ Target… ▸ Unit Testing Bundle**. Product Name: **`CarniVisionTests`**. Team: `Z23895JP8U`. Target to be Tested: **CarniVision**. Finish. This creates the `CarniVisionTests` group/target and a default test file — delete the auto-generated `CarniVisionTests.swift` placeholder (we add our own test files in later tasks).
+In Xcode: **File ▸ New ▸ Target… ▸ Unit Testing Bundle**. Product Name: **`AgriVisionTests`**. Team: `Z23895JP8U`. Target to be Tested: **AgriVision**. Finish. This creates the `AgriVisionTests` group/target and a default test file — delete the auto-generated `AgriVisionTests.swift` placeholder (we add our own test files in later tasks).
 
 - [x] **Step 4: Verify the package and test target are registered**
 
 ```bash
-grep -c "XCRemoteSwiftPackageReference" CarniVision.xcodeproj/project.pbxproj
-grep -nE "supabase-swift|productType = \"com.apple.product-type.bundle.unit-test\"|name = CarniVisionTests" CarniVision.xcodeproj/project.pbxproj | head
+grep -c "XCRemoteSwiftPackageReference" AgriVision.xcodeproj/project.pbxproj
+grep -nE "supabase-swift|productType = \"com.apple.product-type.bundle.unit-test\"|name = AgriVisionTests" AgriVision.xcodeproj/project.pbxproj | head
 ```
-Expected: the `XCRemoteSwiftPackageReference` count is `>= 1`; the second grep shows the supabase-swift repo URL and a `CarniVisionTests` unit-test target.
+Expected: the `XCRemoteSwiftPackageReference` count is `>= 1`; the second grep shows the supabase-swift repo URL and a `AgriVisionTests` unit-test target.
 
 - [x] **Step 5: Confirm the schemes Xcode sees**
 
 ```bash
-xcodebuild -list -project CarniVision.xcodeproj 2>&1 | sed -n '1,40p'
+xcodebuild -list -project AgriVision.xcodeproj 2>&1 | sed -n '1,40p'
 ```
-Expected: under **Schemes**, `CarniVision` appears. (If `xcodebuild` errors with "requires Xcode", run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` first.)
+Expected: under **Schemes**, `AgriVision` appears. (If `xcodebuild` errors with "requires Xcode", run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` first.)
 
 - [x] **Step 6: Commit**
 
 ```bash
-git add CarniVision.xcodeproj
-git commit -m "Add supabase-swift package and CarniVisionTests target"
+git add AgriVision.xcodeproj
+git commit -m "Add supabase-swift package and AgriVisionTests target"
 ```
 
 ---
@@ -113,24 +113,24 @@ git commit -m "Add supabase-swift package and CarniVisionTests target"
 ## Task 2: Config keys (Info.plist) + AppConfig + README note
 
 **Files:**
-- Modify: `CarniVision/Info.plist`
-- Create: `CarniVision/Config/AppConfig.swift`
+- Modify: `AgriVision/Info.plist`
+- Create: `AgriVision/Config/AppConfig.swift`
 - Modify: `README.md` (append)
 
 - [x] **Step 1: Add config keys to Info.plist**
 
-Replace this exact block in `CarniVision/Info.plist`:
+Replace this exact block in `AgriVision/Info.plist`:
 
 ```xml
 	<key>NSCameraUsageDescription</key>
-	<string>Carni_vision uses the camera to scan and identify animals.</string>
+	<string>Agri_vision uses the camera to scan and identify animals.</string>
 ```
 
 with:
 
 ```xml
 	<key>NSCameraUsageDescription</key>
-	<string>Carni_vision uses the camera to scan and identify animals.</string>
+	<string>Agri_vision uses the camera to scan and identify animals.</string>
 	<key>SUPABASE_URL</key>
 	<string>https://xznmsmweefckkqjfepqs.supabase.co</string>
 	<key>SUPABASE_ANON_KEY</key>
@@ -141,7 +141,7 @@ with:
 
 - [x] **Step 2: Create AppConfig**
 
-Create `CarniVision/Config/AppConfig.swift`:
+Create `AgriVision/Config/AppConfig.swift`:
 
 ```swift
 import Foundation
@@ -183,10 +183,10 @@ enum AppConfig {
 
 - [x] **Step 3: Register AppConfig.swift in the app target**
 
-In Xcode, drag `CarniVision/Config/AppConfig.swift` into the **CarniVision** group so it joins the app target's Compile Sources (or it is auto-added if created via Xcode's New File). Verify:
+In Xcode, drag `AgriVision/Config/AppConfig.swift` into the **AgriVision** group so it joins the app target's Compile Sources (or it is auto-added if created via Xcode's New File). Verify:
 
 ```bash
-grep -c "AppConfig.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "AppConfig.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
@@ -199,7 +199,7 @@ Append to `README.md`:
 
 1. **Supabase anon key.** In the Supabase dashboard → Project Settings → API, copy the
    **anon / publishable** key (NOT the service-role key). Open
-   `CarniVision/Info.plist` and replace `REPLACE_WITH_SUPABASE_ANON_KEY` in the
+   `AgriVision/Info.plist` and replace `REPLACE_WITH_SUPABASE_ANON_KEY` in the
    `SUPABASE_ANON_KEY` value with the copied key. The service-role key must never ship
    in the app.
 2. **SPM package.** supabase-swift is pinned to an exact version in the Xcode project.
@@ -211,7 +211,7 @@ Append to `README.md`:
 - [x] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Info.plist CarniVision/Config/AppConfig.swift README.md CarniVision.xcodeproj
+git add AgriVision/Info.plist AgriVision/Config/AppConfig.swift README.md AgriVision.xcodeproj
 git commit -m "Add app config keys and AppConfig accessor"
 ```
 
@@ -220,11 +220,11 @@ git commit -m "Add app config keys and AppConfig accessor"
 ## Task 3: SupabaseClientProvider
 
 **Files:**
-- Create: `CarniVision/Services/SupabaseClientProvider.swift`
+- Create: `AgriVision/Services/SupabaseClientProvider.swift`
 
 - [x] **Step 1: Create the provider**
 
-Create `CarniVision/Services/SupabaseClientProvider.swift`:
+Create `AgriVision/Services/SupabaseClientProvider.swift`:
 
 ```swift
 import Foundation
@@ -242,17 +242,17 @@ enum SupabaseClientProvider {
 
 - [x] **Step 2: Register the file in the app target**
 
-In Xcode, add `CarniVision/Services/SupabaseClientProvider.swift` to the **CarniVision** target. Verify:
+In Xcode, add `AgriVision/Services/SupabaseClientProvider.swift` to the **AgriVision** target. Verify:
 
 ```bash
-grep -c "SupabaseClientProvider.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "SupabaseClientProvider.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
 - [x] **Step 3: Commit**
 
 ```bash
-git add CarniVision/Services/SupabaseClientProvider.swift CarniVision.xcodeproj
+git add AgriVision/Services/SupabaseClientProvider.swift AgriVision.xcodeproj
 git commit -m "Add SupabaseClientProvider"
 ```
 
@@ -263,16 +263,16 @@ git commit -m "Add SupabaseClientProvider"
 We test the observable transitions behind a small protocol so tests do not hit the network. The production `AuthService` wraps the real client; `AuthServiceTests` injects a stub.
 
 **Files:**
-- Create: `CarniVision/Services/AuthService.swift`
-- Test: `CarniVisionTests/AuthServiceTests.swift`
+- Create: `AgriVision/Services/AuthService.swift`
+- Test: `AgriVisionTests/AuthServiceTests.swift`
 
 - [x] **Step 1: Write the failing test**
 
-Create `CarniVisionTests/AuthServiceTests.swift`:
+Create `AgriVisionTests/AuthServiceTests.swift`:
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 /// Stub backend so AuthService transitions can be tested without network.
 final class StubAuthBackend: AuthBackend {
@@ -338,13 +338,13 @@ final class AuthServiceTests: XCTestCase {
 - [x] **Step 2: Run the test, verify it fails to build**
 
 ```bash
-xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild test -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: FAIL — `AuthBackend`, `AuthIdentity`, `AuthService` are undefined.
 
 - [x] **Step 3: Write the implementation**
 
-Create `CarniVision/Services/AuthService.swift`:
+Create `AgriVision/Services/AuthService.swift`:
 
 ```swift
 import Foundation
@@ -461,25 +461,25 @@ final class AuthService: ObservableObject {
 
 - [x] **Step 4: Register both files in their targets**
 
-In Xcode add `CarniVision/Services/AuthService.swift` to the **CarniVision** target and `CarniVisionTests/AuthServiceTests.swift` to the **CarniVisionTests** target. Verify:
+In Xcode add `AgriVision/Services/AuthService.swift` to the **AgriVision** target and `AgriVisionTests/AuthServiceTests.swift` to the **AgriVisionTests** target. Verify:
 
 ```bash
-grep -c "AuthService.swift" CarniVision.xcodeproj/project.pbxproj
-grep -c "AuthServiceTests.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "AuthService.swift" AgriVision.xcodeproj/project.pbxproj
+grep -c "AuthServiceTests.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
 - [x] **Step 5: Run the test, verify it passes**
 
 ```bash
-xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/AuthServiceTests 2>&1 | tail -20
+xcodebuild test -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:AgriVisionTests/AuthServiceTests 2>&1 | tail -20
 ```
 Expected: PASS (3 tests).
 
 - [x] **Step 6: Commit**
 
 ```bash
-git add CarniVision/Services/AuthService.swift CarniVisionTests/AuthServiceTests.swift CarniVision.xcodeproj
+git add AgriVision/Services/AuthService.swift AgriVisionTests/AuthServiceTests.swift AgriVision.xcodeproj
 git commit -m "Add AuthService with stubbed-backend tests"
 ```
 
@@ -488,11 +488,11 @@ git commit -m "Add AuthService with stubbed-backend tests"
 ## Task 5: Add auth localization strings
 
 **Files:**
-- Modify: `CarniVision/Models/Localization.swift`
+- Modify: `AgriVision/Models/Localization.swift`
 
 - [x] **Step 1: Add EN keys**
 
-In `CarniVision/Models/Localization.swift`, in the `.english` dictionary, replace this exact line:
+In `AgriVision/Models/Localization.swift`, in the `.english` dictionary, replace this exact line:
 
 ```swift
             "auth.backToLogin": "Back to login",
@@ -529,7 +529,7 @@ with:
 - [x] **Step 3: Commit**
 
 ```bash
-git add CarniVision/Models/Localization.swift
+git add AgriVision/Models/Localization.swift
 git commit -m "Add auth flow localization strings"
 ```
 
@@ -538,20 +538,20 @@ git commit -m "Add auth flow localization strings"
 ## Task 6: Wire RootView, App entry, LoginView, SignUpView to AuthService
 
 **Files:**
-- Modify: `CarniVision/CarniVisionApp.swift`
-- Modify: `CarniVision/Views/RootView.swift`
-- Modify: `CarniVision/Views/LoginView.swift`
-- Modify: `CarniVision/Views/SignUpView.swift`
+- Modify: `AgriVision/AgriVisionApp.swift`
+- Modify: `AgriVision/Views/RootView.swift`
+- Modify: `AgriVision/Views/LoginView.swift`
+- Modify: `AgriVision/Views/SignUpView.swift`
 
 - [x] **Step 1: Inject AuthService at the app root**
 
-Replace the entire contents of `CarniVision/CarniVisionApp.swift`:
+Replace the entire contents of `AgriVision/AgriVisionApp.swift`:
 
 ```swift
 import SwiftUI
 
 @main
-struct CarniVisionApp: App {
+struct AgriVisionApp: App {
     @StateObject private var auth = AuthService()
 
     var body: some Scene {
@@ -568,7 +568,7 @@ struct CarniVisionApp: App {
 
 - [x] **Step 2: Gate RootView on the session**
 
-Replace the entire contents of `CarniVision/Views/RootView.swift`:
+Replace the entire contents of `AgriVision/Views/RootView.swift`:
 
 ```swift
 import SwiftUI
@@ -593,7 +593,7 @@ struct RootView: View {
 
 - [x] **Step 3: Drop the obsolete onAuthenticated closure from LandingView**
 
-In `CarniVision/Views/LandingView.swift`, replace this exact block:
+In `AgriVision/Views/LandingView.swift`, replace this exact block:
 
 ```swift
     var onAuthenticated: () -> Void = {}
@@ -653,7 +653,7 @@ with:
 
 - [x] **Step 4: Real sign-in in LoginView**
 
-In `CarniVision/Views/LoginView.swift`, replace this exact block:
+In `AgriVision/Views/LoginView.swift`, replace this exact block:
 
 ```swift
 struct SignInForm: View {
@@ -701,7 +701,7 @@ with:
 ```swift
                     if let error = auth.errorMessage {
                         Text(error)
-                            .font(CarniFont.regular(13))
+                            .font(AgriFont.regular(13))
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -748,7 +748,7 @@ with:
 
 - [x] **Step 5: Real sign-up in SignUpView**
 
-In `CarniVision/Views/SignUpView.swift`, replace this exact block:
+In `AgriVision/Views/SignUpView.swift`, replace this exact block:
 
 ```swift
 struct SignUpForm: View {
@@ -796,7 +796,7 @@ with:
 ```swift
                 if let error = auth.errorMessage {
                     Text(error)
-                        .font(CarniFont.regular(13))
+                        .font(AgriFont.regular(13))
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -842,14 +842,14 @@ with:
 - [x] **Step 6: Build to confirm wiring compiles**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [x] **Step 7: Commit**
 
 ```bash
-git add CarniVision/CarniVisionApp.swift CarniVision/Views/RootView.swift CarniVision/Views/LandingView.swift CarniVision/Views/LoginView.swift CarniVision/Views/SignUpView.swift
+git add AgriVision/AgriVisionApp.swift AgriVision/Views/RootView.swift AgriVision/Views/LandingView.swift AgriVision/Views/LoginView.swift AgriVision/Views/SignUpView.swift
 git commit -m "Replace fake auth flag with AuthService session gating"
 ```
 
@@ -858,11 +858,11 @@ git commit -m "Replace fake auth flag with AuthService session gating"
 ## Task 7: Recognition models
 
 **Files:**
-- Create: `CarniVision/Services/RecognitionModels.swift`
+- Create: `AgriVision/Services/RecognitionModels.swift`
 
 - [x] **Step 1: Create the models**
 
-Create `CarniVision/Services/RecognitionModels.swift`. Field names use `CodingKeys` to map the server's snake_case JSON.
+Create `AgriVision/Services/RecognitionModels.swift`. Field names use `CodingKeys` to map the server's snake_case JSON.
 
 ```swift
 import Foundation
@@ -930,17 +930,17 @@ enum RecognitionError: Error, LocalizedError {
 
 - [x] **Step 2: Register in the app target**
 
-In Xcode add `CarniVision/Services/RecognitionModels.swift` to the **CarniVision** target. Verify:
+In Xcode add `AgriVision/Services/RecognitionModels.swift` to the **AgriVision** target. Verify:
 
 ```bash
-grep -c "RecognitionModels.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "RecognitionModels.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
 - [x] **Step 3: Commit**
 
 ```bash
-git add CarniVision/Services/RecognitionModels.swift CarniVision.xcodeproj
+git add AgriVision/Services/RecognitionModels.swift AgriVision.xcodeproj
 git commit -m "Add recognition response models"
 ```
 
@@ -949,16 +949,16 @@ git commit -m "Add recognition response models"
 ## Task 8: MultipartFormData encoder (TDD)
 
 **Files:**
-- Create: `CarniVision/Services/MultipartFormData.swift`
-- Test: `CarniVisionTests/MultipartFormDataTests.swift`
+- Create: `AgriVision/Services/MultipartFormData.swift`
+- Test: `AgriVisionTests/MultipartFormDataTests.swift`
 
 - [x] **Step 1: Write the failing test**
 
-Create `CarniVisionTests/MultipartFormDataTests.swift`:
+Create `AgriVisionTests/MultipartFormDataTests.swift`:
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 final class MultipartFormDataTests: XCTestCase {
     func testContentTypeHeaderCarriesBoundary() {
@@ -1009,13 +1009,13 @@ final class MultipartFormDataTests: XCTestCase {
 - [x] **Step 2: Run the test, verify it fails to build**
 
 ```bash
-xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/MultipartFormDataTests 2>&1 | tail -20
+xcodebuild test -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:AgriVisionTests/MultipartFormDataTests 2>&1 | tail -20
 ```
 Expected: FAIL — `MultipartFormData` undefined.
 
 - [x] **Step 3: Write the implementation**
 
-Create `CarniVision/Services/MultipartFormData.swift`:
+Create `AgriVision/Services/MultipartFormData.swift`:
 
 ```swift
 import Foundation
@@ -1061,25 +1061,25 @@ struct MultipartFormData {
 
 - [x] **Step 4: Register both files in their targets**
 
-In Xcode add `CarniVision/Services/MultipartFormData.swift` to the **CarniVision** target and `CarniVisionTests/MultipartFormDataTests.swift` to the **CarniVisionTests** target. Verify:
+In Xcode add `AgriVision/Services/MultipartFormData.swift` to the **AgriVision** target and `AgriVisionTests/MultipartFormDataTests.swift` to the **AgriVisionTests** target. Verify:
 
 ```bash
-grep -c "MultipartFormData.swift" CarniVision.xcodeproj/project.pbxproj
-grep -c "MultipartFormDataTests.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "MultipartFormData.swift" AgriVision.xcodeproj/project.pbxproj
+grep -c "MultipartFormDataTests.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
 - [x] **Step 5: Run the test, verify it passes**
 
 ```bash
-xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/MultipartFormDataTests 2>&1 | tail -20
+xcodebuild test -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:AgriVisionTests/MultipartFormDataTests 2>&1 | tail -20
 ```
 Expected: PASS (5 tests).
 
 - [x] **Step 6: Commit**
 
 ```bash
-git add CarniVision/Services/MultipartFormData.swift CarniVisionTests/MultipartFormDataTests.swift CarniVision.xcodeproj
+git add AgriVision/Services/MultipartFormData.swift AgriVisionTests/MultipartFormDataTests.swift AgriVision.xcodeproj
 git commit -m "Add multipart/form-data encoder with tests"
 ```
 
@@ -1088,12 +1088,12 @@ git commit -m "Add multipart/form-data encoder with tests"
 ## Task 9: Image encoding helpers + RecognitionService protocol + Mock
 
 **Files:**
-- Create: `CarniVision/Services/ImageEncoding.swift`
-- Create: `CarniVision/Services/RecognitionService.swift`
+- Create: `AgriVision/Services/ImageEncoding.swift`
+- Create: `AgriVision/Services/RecognitionService.swift`
 
 - [x] **Step 1: Create the image helpers**
 
-Create `CarniVision/Services/ImageEncoding.swift`:
+Create `AgriVision/Services/ImageEncoding.swift`:
 
 ```swift
 import UIKit
@@ -1126,7 +1126,7 @@ enum ImageEncoding {
 
 - [x] **Step 2: Create the protocol + mock**
 
-Create `CarniVision/Services/RecognitionService.swift`:
+Create `AgriVision/Services/RecognitionService.swift`:
 
 ```swift
 import Foundation
@@ -1168,18 +1168,18 @@ final class MockRecognitionService: ObservableObject, RecognitionService {
 
 - [x] **Step 3: Register both files in the app target**
 
-In Xcode add both files to the **CarniVision** target. Verify:
+In Xcode add both files to the **AgriVision** target. Verify:
 
 ```bash
-grep -c "ImageEncoding.swift" CarniVision.xcodeproj/project.pbxproj
-grep -c "RecognitionService.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "ImageEncoding.swift" AgriVision.xcodeproj/project.pbxproj
+grep -c "RecognitionService.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
 - [x] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Services/ImageEncoding.swift CarniVision/Services/RecognitionService.swift CarniVision.xcodeproj
+git add AgriVision/Services/ImageEncoding.swift AgriVision/Services/RecognitionService.swift AgriVision.xcodeproj
 git commit -m "Add image encoding helpers and RecognitionService protocol with mock"
 ```
 
@@ -1188,16 +1188,16 @@ git commit -m "Add image encoding helpers and RecognitionService protocol with m
 ## Task 10: CloudRunRecognitionService (with MockURLProtocol tests)
 
 **Files:**
-- Create: `CarniVision/Services/CloudRunRecognitionService.swift`
-- Test: `CarniVisionTests/RecognitionDecodingTests.swift`
+- Create: `AgriVision/Services/CloudRunRecognitionService.swift`
+- Test: `AgriVisionTests/RecognitionDecodingTests.swift`
 
 - [x] **Step 1: Write the failing test**
 
-Create `CarniVisionTests/RecognitionDecodingTests.swift`:
+Create `AgriVisionTests/RecognitionDecodingTests.swift`:
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 /// Intercepts URLSession requests so we can assert on them and return fixtures.
 final class MockURLProtocol: URLProtocol {
@@ -1352,13 +1352,13 @@ final class RecognitionDecodingTests: XCTestCase {
 - [x] **Step 2: Run the test, verify it fails to build**
 
 ```bash
-xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/RecognitionDecodingTests 2>&1 | tail -20
+xcodebuild test -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:AgriVisionTests/RecognitionDecodingTests 2>&1 | tail -20
 ```
 Expected: FAIL — `CloudRunRecognitionService` undefined.
 
 - [x] **Step 3: Write the implementation**
 
-Create `CarniVision/Services/CloudRunRecognitionService.swift`:
+Create `AgriVision/Services/CloudRunRecognitionService.swift`:
 
 ```swift
 import Foundation
@@ -1467,25 +1467,25 @@ private struct HealthResponse: Decodable {
 
 - [x] **Step 4: Register both files in their targets**
 
-In Xcode add `CarniVision/Services/CloudRunRecognitionService.swift` to **CarniVision** and `CarniVisionTests/RecognitionDecodingTests.swift` to **CarniVisionTests**. Verify:
+In Xcode add `AgriVision/Services/CloudRunRecognitionService.swift` to **AgriVision** and `AgriVisionTests/RecognitionDecodingTests.swift` to **AgriVisionTests**. Verify:
 
 ```bash
-grep -c "CloudRunRecognitionService.swift" CarniVision.xcodeproj/project.pbxproj
-grep -c "RecognitionDecodingTests.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "CloudRunRecognitionService.swift" AgriVision.xcodeproj/project.pbxproj
+grep -c "RecognitionDecodingTests.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: each `>= 1`.
 
 - [x] **Step 5: Run the test, verify it passes**
 
 ```bash
-xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:CarniVisionTests/RecognitionDecodingTests 2>&1 | tail -20
+xcodebuild test -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:AgriVisionTests/RecognitionDecodingTests 2>&1 | tail -20
 ```
 Expected: PASS (4 tests).
 
 - [x] **Step 6: Commit**
 
 ```bash
-git add CarniVision/Services/CloudRunRecognitionService.swift CarniVisionTests/RecognitionDecodingTests.swift CarniVision.xcodeproj
+git add AgriVision/Services/CloudRunRecognitionService.swift AgriVisionTests/RecognitionDecodingTests.swift AgriVision.xcodeproj
 git commit -m "Add CloudRunRecognitionService with MockURLProtocol tests"
 ```
 
@@ -1494,17 +1494,17 @@ git commit -m "Add CloudRunRecognitionService with MockURLProtocol tests"
 ## Task 11: Inject RecognitionService + warmUp at app launch
 
 **Files:**
-- Modify: `CarniVision/CarniVisionApp.swift`
+- Modify: `AgriVision/AgriVisionApp.swift`
 
 - [x] **Step 1: Construct and inject the service, warm it up**
 
-Replace the entire contents of `CarniVision/CarniVisionApp.swift` (it currently holds only `auth`):
+Replace the entire contents of `AgriVision/AgriVisionApp.swift` (it currently holds only `auth`):
 
 ```swift
 import SwiftUI
 
 @main
-struct CarniVisionApp: App {
+struct AgriVisionApp: App {
     @StateObject private var auth = AuthService()
     @StateObject private var recognition: CloudRunRecognitionService
 
@@ -1537,14 +1537,14 @@ struct CarniVisionApp: App {
 - [x] **Step 2: Build to confirm it compiles**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [x] **Step 3: Commit**
 
 ```bash
-git add CarniVision/CarniVisionApp.swift
+git add AgriVision/AgriVisionApp.swift
 git commit -m "Inject recognition service and warm it up at launch"
 ```
 
@@ -1553,11 +1553,11 @@ git commit -m "Inject recognition service and warm it up at launch"
 ## Task 12: AnimalRepository
 
 **Files:**
-- Create: `CarniVision/Services/AnimalRepository.swift`
+- Create: `AgriVision/Services/AnimalRepository.swift`
 
 - [x] **Step 1: Create the repository**
 
-Create `CarniVision/Services/AnimalRepository.swift`. The insert sets `owner` explicitly (schema is `not null`, no default) and omits `status` (nullable). The SDK attaches the session JWT so RLS scopes the row.
+Create `AgriVision/Services/AnimalRepository.swift`. The insert sets `owner` explicitly (schema is `not null`, no default) and omits `status` (nullable). The SDK attaches the session JWT so RLS scopes the row.
 
 ```swift
 import Foundation
@@ -1633,17 +1633,17 @@ struct AnimalRepository {
 
 - [x] **Step 2: Register in the app target**
 
-In Xcode add `CarniVision/Services/AnimalRepository.swift` to the **CarniVision** target. Verify:
+In Xcode add `AgriVision/Services/AnimalRepository.swift` to the **AgriVision** target. Verify:
 
 ```bash
-grep -c "AnimalRepository.swift" CarniVision.xcodeproj/project.pbxproj
+grep -c "AnimalRepository.swift" AgriVision.xcodeproj/project.pbxproj
 ```
 Expected: `>= 1`.
 
 - [x] **Step 3: Commit**
 
 ```bash
-git add CarniVision/Services/AnimalRepository.swift CarniVision.xcodeproj
+git add AgriVision/Services/AnimalRepository.swift AgriVision.xcodeproj
 git commit -m "Add AnimalRepository for Supabase animal inserts"
 ```
 
@@ -1654,11 +1654,11 @@ git commit -m "Add AnimalRepository for Supabase animal inserts"
 This task adds the model-side state. UI wiring is Task 14. Keep the existing camera pipeline untouched — we only add new published state and methods, and append crops to a buffer at the existing success point.
 
 **Files:**
-- Modify: `CarniVision/Views/Main/CameraView.swift`
+- Modify: `AgriVision/Views/Main/CameraView.swift`
 
 - [x] **Step 1: Add an enrollment-mode enum and published state to CameraModel**
 
-In `CarniVision/Views/Main/CameraView.swift`, replace this exact block (the `Status`/`CaptureMode` enums plus the first published properties):
+In `AgriVision/Views/Main/CameraView.swift`, replace this exact block (the `Status`/`CaptureMode` enums plus the first published properties):
 
 ```swift
 final class CameraModel: NSObject, ObservableObject {
@@ -1774,7 +1774,7 @@ with:
 
 - [x] **Step 3: Add enrollment configuration, full-body capture, identify, and submit methods**
 
-In `CarniVision/Views/Main/CameraView.swift`, add these methods to `CameraModel` immediately **after** the existing `finishFailure(_:)` method (i.e., just before the closing brace of the `CameraModel` class — the line `}` on what is currently line 346, before `extension CameraModel:`):
+In `AgriVision/Views/Main/CameraView.swift`, add these methods to `CameraModel` immediately **after** the existing `finishFailure(_:)` method (i.e., just before the closing brace of the `CameraModel` class — the line `}` on what is currently line 346, before `extension CameraModel:`):
 
 ```swift
     // MARK: Enrollment / identify orchestration
@@ -1876,14 +1876,14 @@ In `CarniVision/Views/Main/CameraView.swift`, add these methods to `CameraModel`
 - [x] **Step 4: Build to confirm the model compiles**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [x] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Views/Main/CameraView.swift
+git add AgriVision/Views/Main/CameraView.swift
 git commit -m "Add enrollment session and identify orchestration to CameraModel"
 ```
 
@@ -1892,12 +1892,12 @@ git commit -m "Add enrollment session and identify orchestration to CameraModel"
 ## Task 14: Camera UI — enrollment progress, full-body prompt, identify result card
 
 **Files:**
-- Modify: `CarniVision/Views/Main/CameraView.swift`
-- Modify: `CarniVision/Models/Localization.swift`
+- Modify: `AgriVision/Views/Main/CameraView.swift`
+- Modify: `AgriVision/Models/Localization.swift`
 
 - [x] **Step 1: Add camera/recognition localization strings (EN)**
 
-In `CarniVision/Models/Localization.swift`, in the `.english` dictionary, replace this exact line:
+In `AgriVision/Models/Localization.swift`, in the `.english` dictionary, replace this exact line:
 
 ```swift
             "camera.done": "Done",
@@ -1955,7 +1955,7 @@ with:
 
 - [x] **Step 3: Give CameraScreen a purpose + injected service, and identify after capture**
 
-In `CarniVision/Views/Main/CameraView.swift`, replace this exact block:
+In `AgriVision/Views/Main/CameraView.swift`, replace this exact block:
 
 ```swift
 struct CameraScreen: View {
@@ -2078,7 +2078,7 @@ with:
 
 - [x] **Step 6: Add the overlay view builders**
 
-In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `CameraScreen` immediately **after** the existing `resultOverlay` computed property (before `private func capture()`):
+In `AgriVision/Views/Main/CameraView.swift`, add these computed views to `CameraScreen` immediately **after** the existing `resultOverlay` computed property (before `private func capture()`):
 
 ```swift
     // MARK: Enrollment overlay
@@ -2090,10 +2090,10 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
             VStack {
                 Spacer()
                 Text(lang.t("camera.enroll.progress", model.collectedCrops.count, CameraModel.enrollTarget))
-                    .font(CarniFont.semibold(16))
+                    .font(AgriFont.semibold(16))
                     .foregroundStyle(.white)
                     .padding(.vertical, 8).padding(.horizontal, 16)
-                    .background(Capsule().fill(CarniColors.purple.opacity(0.85)))
+                    .background(Capsule().fill(AgriColors.purple.opacity(0.85)))
                     .padding(.bottom, 160)
             }
             .allowsHitTesting(false)
@@ -2102,7 +2102,7 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
             VStack(spacing: 16) {
                 Spacer()
                 Text(lang.t("camera.enroll.fullPrompt"))
-                    .font(CarniFont.semibold(17))
+                    .font(AgriFont.semibold(17))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .shadow(color: .black.opacity(0.5), radius: 4)
@@ -2115,11 +2115,11 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
                     }
                 } label: {
                     Text(lang.t("camera.enroll.captureFull"))
-                        .font(CarniFont.semibold(16))
+                        .font(AgriFont.semibold(16))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(CarniColors.purple)
+                        .background(AgriColors.purple)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -2132,7 +2132,7 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
                 VStack(spacing: 12) {
                     ProgressView().tint(.white)
                     Text(lang.t("camera.enroll.submitting"))
-                        .font(CarniFont.semibold(16)).foregroundStyle(.white)
+                        .font(AgriFont.semibold(16)).foregroundStyle(.white)
                 }
             }
 
@@ -2140,14 +2140,14 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
             recognitionScrim {
                 VStack(spacing: 16) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 54)).foregroundStyle(CarniColors.successGreen)
+                        .font(.system(size: 54)).foregroundStyle(AgriColors.successGreen)
                     Text(lang.t("camera.enroll.success"))
-                        .font(CarniFont.bold(20)).foregroundStyle(.white)
+                        .font(AgriFont.bold(20)).foregroundStyle(.white)
                     Button { onClose() } label: {
                         Text(lang.t("camera.done"))
-                            .font(CarniFont.semibold(16)).foregroundStyle(CarniColors.purple)
+                            .font(AgriFont.semibold(16)).foregroundStyle(AgriColors.purple)
                             .padding(.vertical, 12).padding(.horizontal, 40)
-                            .background(CarniColors.white)
+                            .background(AgriColors.white)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -2160,18 +2160,18 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 54)).foregroundStyle(.red)
                     Text(lang.t("camera.enroll.failed"))
-                        .font(CarniFont.bold(20)).foregroundStyle(.white)
+                        .font(AgriFont.bold(20)).foregroundStyle(.white)
                     if let err = model.recognitionError {
-                        Text(err).font(CarniFont.regular(13)).foregroundStyle(.white.opacity(0.85))
+                        Text(err).font(AgriFont.regular(13)).foregroundStyle(.white.opacity(0.85))
                             .multilineTextAlignment(.center).padding(.horizontal, 24)
                     }
                     Button {
                         Task { await model.submitEnrollment(using: recognition) }
                     } label: {
                         Text(lang.t("camera.enroll.retry"))
-                            .font(CarniFont.semibold(16)).foregroundStyle(CarniColors.purple)
+                            .font(AgriFont.semibold(16)).foregroundStyle(AgriColors.purple)
                             .padding(.vertical, 12).padding(.horizontal, 40)
-                            .background(CarniColors.white)
+                            .background(AgriColors.white)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -2189,21 +2189,21 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
                 if let result = model.identifyResult {
                     if result.isIdentified {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 50)).foregroundStyle(CarniColors.successGreen)
+                            .font(.system(size: 50)).foregroundStyle(AgriColors.successGreen)
                         Text(result.name ?? lang.t("camera.identify.identified"))
-                            .font(CarniFont.bold(22)).foregroundStyle(.white)
+                            .font(AgriFont.bold(22)).foregroundStyle(.white)
                         Text(lang.t("camera.identify.score", result.score * 100))
-                            .font(CarniFont.regular(15)).foregroundStyle(.white.opacity(0.85))
+                            .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
                     } else {
                         Image(systemName: "questionmark.circle.fill")
                             .font(.system(size: 50)).foregroundStyle(.orange)
                         Text(lang.t("camera.identify.unknown"))
-                            .font(CarniFont.bold(20)).foregroundStyle(.white)
+                            .font(AgriFont.bold(20)).foregroundStyle(.white)
                         Button { onRequestEnroll() } label: {
                             Text(lang.t("camera.identify.enroll"))
-                                .font(CarniFont.semibold(16)).foregroundStyle(.white)
+                                .font(AgriFont.semibold(16)).foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13).background(CarniColors.purple)
+                                .padding(.vertical, 13).background(AgriColors.purple)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain).padding(.horizontal, 24)
@@ -2212,12 +2212,12 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
                     Image(systemName: "wifi.slash")
                         .font(.system(size: 44)).foregroundStyle(.white)
                     Text(lang.t("camera.identify.offline"))
-                        .font(CarniFont.semibold(16)).foregroundStyle(.white)
+                        .font(AgriFont.semibold(16)).foregroundStyle(.white)
                 }
 
                 Button { model.resetRecognition() } label: {
                     Text(lang.t("camera.scanAgain"))
-                        .font(CarniFont.semibold(15)).foregroundStyle(.white.opacity(0.9))
+                        .font(AgriFont.semibold(15)).foregroundStyle(.white.opacity(0.9))
                         .padding(.vertical, 10).padding(.horizontal, 30)
                         .overlay(Capsule().stroke(.white.opacity(0.5), lineWidth: 1))
                 }
@@ -2231,7 +2231,7 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
             HStack(spacing: 8) {
                 ProgressView().tint(.white).scaleEffect(0.8)
                 Text(lang.t("camera.identify.waking"))
-                    .font(CarniFont.semibold(13)).foregroundStyle(.white)
+                    .font(AgriFont.semibold(13)).foregroundStyle(.white)
             }
             .padding(.vertical, 8).padding(.horizontal, 14)
             .background(Capsule().fill(Color.black.opacity(0.6)))
@@ -2253,19 +2253,19 @@ In `CarniVision/Views/Main/CameraView.swift`, add these computed views to `Camer
     }
 ```
 
-> All referenced symbols exist: `CarniColors`, `CarniFont`, `lang.t(_:)` and `lang.t(_:_:)` (variadic), `model.identifyResult`, `model.recognitionError`, `model.enrollPhase`, `model.collectedCrops`, `CameraModel.enrollTarget`, `model.isReady` is on the injected `recognition` (a `CloudRunRecognitionService`), `model.captureFullBody()`, `model.submitEnrollment(using:)`, `model.runIdentify(using:)`, `model.resetRecognition()`.
+> All referenced symbols exist: `AgriColors`, `AgriFont`, `lang.t(_:)` and `lang.t(_:_:)` (variadic), `model.identifyResult`, `model.recognitionError`, `model.enrollPhase`, `model.collectedCrops`, `CameraModel.enrollTarget`, `model.isReady` is on the injected `recognition` (a `CloudRunRecognitionService`), `model.captureFullBody()`, `model.submitEnrollment(using:)`, `model.runIdentify(using:)`, `model.resetRecognition()`.
 
 - [x] **Step 7: Build to confirm UI compiles**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [x] **Step 8: Commit**
 
 ```bash
-git add CarniVision/Views/Main/CameraView.swift CarniVision/Models/Localization.swift
+git add AgriVision/Views/Main/CameraView.swift AgriVision/Models/Localization.swift
 git commit -m "Add enrollment progress, full-body prompt, and identify result UI"
 ```
 
@@ -2274,11 +2274,11 @@ git commit -m "Add enrollment progress, full-body prompt, and identify result UI
 ## Task 15: AddAnimalView → create row → present enrollment camera
 
 **Files:**
-- Modify: `CarniVision/Views/Main/AddAnimalView.swift`
+- Modify: `AgriVision/Views/Main/AddAnimalView.swift`
 
 - [x] **Step 1: Inject auth, add repository + presentation state**
 
-In `CarniVision/Views/Main/AddAnimalView.swift`, replace this exact block:
+In `AgriVision/Views/Main/AddAnimalView.swift`, replace this exact block:
 
 ```swift
 struct AddAnimalScreen: View {
@@ -2328,13 +2328,13 @@ Replace this exact block:
     private var saveButton: some View {
         Button(action: save) {
             Text(lang.t("add.save"))
-                .font(CarniFont.bold(16))
+                .font(AgriFont.bold(16))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(canSave ? CarniColors.purple : CarniColors.purple.opacity(0.35))
+                        .fill(canSave ? AgriColors.purple : AgriColors.purple.opacity(0.35))
                 )
         }
         .buttonStyle(.plain)
@@ -2349,19 +2349,19 @@ with:
         VStack(spacing: 10) {
             if let saveError {
                 Text(saveError)
-                    .font(CarniFont.regular(13))
+                    .font(AgriFont.regular(13))
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button(action: save) {
                 Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("add.save"))
-                    .font(CarniFont.bold(16))
+                    .font(AgriFont.bold(16))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(canSave && !isSaving ? CarniColors.purple : CarniColors.purple.opacity(0.35))
+                            .fill(canSave && !isSaving ? AgriColors.purple : AgriColors.purple.opacity(0.35))
                     )
             }
             .buttonStyle(.plain)
@@ -2494,7 +2494,7 @@ with:
 
 - [x] **Step 5: Add the HerdStore helper used on enrollment completion**
 
-In `CarniVision/Models/HerdData.swift`, add this method to `HerdStore` immediately **after** the existing `addAnimal(...)` method (before the `// MARK: Date helpers` comment):
+In `AgriVision/Models/HerdData.swift`, add this method to `HerdStore` immediately **after** the existing `addAnimal(...)` method (before the `// MARK: Date helpers` comment):
 
 ```swift
     /// Flips the most-recently-added animal's muzzle flag to true (called when
@@ -2511,14 +2511,14 @@ In `CarniVision/Models/HerdData.swift`, add this method to `HerdStore` immediate
 - [x] **Step 6: Build to confirm wiring compiles**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [x] **Step 7: Commit**
 
 ```bash
-git add CarniVision/Views/Main/AddAnimalView.swift CarniVision/Models/HerdData.swift
+git add AgriVision/Views/Main/AddAnimalView.swift AgriVision/Models/HerdData.swift
 git commit -m "Wire AddAnimal save to Supabase insert and enrollment camera"
 ```
 
@@ -2529,11 +2529,11 @@ git commit -m "Wire AddAnimal save to Supabase insert and enrollment camera"
 The identify result card's Enroll button (`onRequestEnroll`) must create a row and re-launch the camera in enrollment mode. The camera tab in `MainTabView` presents `CameraScreen` for identify; we let it surface an enroll request up to a coordinator state.
 
 **Files:**
-- Modify: `CarniVision/Views/Main/MainTabView.swift`
+- Modify: `AgriVision/Views/Main/MainTabView.swift`
 
 - [x] **Step 1: Add enroll-from-identify coordination to MainTabView**
 
-In `CarniVision/Views/Main/MainTabView.swift`, replace the entire contents:
+In `AgriVision/Views/Main/MainTabView.swift`, replace the entire contents:
 
 ```swift
 import SwiftUI
@@ -2544,7 +2544,7 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            CarniColors.appBackground
+            AgriColors.appBackground
                 .ignoresSafeArea()
 
             content
@@ -2552,7 +2552,7 @@ struct MainTabView: View {
                 .environmentObject(store)
 
             if selected != .camera {
-                CarniTabBar(selected: $selected)
+                AgriTabBar(selected: $selected)
             }
         }
     }
@@ -2589,7 +2589,7 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            CarniColors.appBackground
+            AgriColors.appBackground
                 .ignoresSafeArea()
 
             content
@@ -2597,7 +2597,7 @@ struct MainTabView: View {
                 .environmentObject(store)
 
             if selected != .camera {
-                CarniTabBar(selected: $selected)
+                AgriTabBar(selected: $selected)
             }
         }
     }
@@ -2647,14 +2647,14 @@ with:
 - [x] **Step 3: Build to confirm it compiles**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [x] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Views/Main/MainTabView.swift
+git add AgriVision/Views/Main/MainTabView.swift
 git commit -m "Route unknown-identify enroll button to Add Animal flow"
 ```
 
@@ -2670,13 +2670,13 @@ Any preview that renders `RootView`, `LandingView`, `SignInForm`, `SignUpForm`, 
 - [x] **Step 1: Find previews that need injection**
 
 ```bash
-grep -rln "#Preview\|PreviewProvider" CarniVision/Views/
+grep -rln "#Preview\|PreviewProvider" AgriVision/Views/
 ```
 Expected: a list of files. For each that renders one of the views above, add the environment objects.
 
 - [x] **Step 2: Add a preview helper for the recognition environment**
 
-If a preview renders `CameraScreen`, it needs a `CloudRunRecognitionService` in the environment (the concrete type used by `@EnvironmentObject`). Add this preview-only factory once, e.g. at the bottom of `CarniVision/Views/Main/CameraView.swift`:
+If a preview renders `CameraScreen`, it needs a `CloudRunRecognitionService` in the environment (the concrete type used by `@EnvironmentObject`). Add this preview-only factory once, e.g. at the bottom of `AgriVision/Views/Main/CameraView.swift`:
 
 ```swift
 #if DEBUG
@@ -2720,14 +2720,14 @@ and for auth/root previews:
 - [x] **Step 4: Build (Debug) to confirm previews compile**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [x] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Views
+git add AgriVision/Views
 git commit -m "Inject mock services into SwiftUI previews"
 ```
 
@@ -2740,14 +2740,14 @@ git commit -m "Inject mock services into SwiftUI previews"
 - [x] **Step 1: Run the whole test suite**
 
 ```bash
-xcodebuild test -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -25
+xcodebuild test -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | tail -25
 ```
 Expected: `** TEST SUCCEEDED **` with `AuthServiceTests` (3), `MultipartFormDataTests` (5), `RecognitionDecodingTests` (4) all passing.
 
 - [x] **Step 2: Confirm a clean release build**
 
 ```bash
-xcodebuild build -project CarniVision.xcodeproj -scheme CarniVision -configuration Release -destination 'generic/platform=iOS' 2>&1 | tail -20
+xcodebuild build -project AgriVision.xcodeproj -scheme AgriVision -configuration Release -destination 'generic/platform=iOS' 2>&1 | tail -20
 ```
 Expected: `** BUILD SUCCEEDED **`. (This is the build that goes to the phone.)
 

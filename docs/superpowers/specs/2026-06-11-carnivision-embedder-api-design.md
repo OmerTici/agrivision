@@ -1,4 +1,4 @@
-# CarniVision Embedder API — Design Spec
+# AgriVision Embedder API — Design Spec
 
 **Date:** 2026-06-11
 **Status:** Approved design, pre-implementation
@@ -9,11 +9,11 @@ separate sub-projects.
 ## Goal
 
 Ship a fast MVP that adds real muzzle **recognition** (enroll + 1:N identify) to the
-CarniVision iOS app, reusing the proven MiewID science from the
+AgriVision iOS app, reusing the proven MiewID science from the
 `Animal_Biometrics_System` bakeoff. The embedding model runs in a stateless FastAPI
 service on Cloud Run; Supabase (Postgres + pgvector, Auth, Storage) holds all state.
 
-This fills three gaps in the current CarniVision app: no muzzle matching, no
+This fills three gaps in the current AgriVision app: no muzzle matching, no
 persistence, no real auth.
 
 ## Proven facts reused from the bakeoff (do not re-derive)
@@ -44,7 +44,7 @@ persistence, no real auth.
 ## Architecture
 
 ```
-iPhone (CarniVision)                  Cloud Run (FastAPI, stateless)      Supabase
+iPhone (AgriVision)                  Cloud Run (FastAPI, stateless)      Supabase
   on-device YOLO face+muzzle crop  →  verify JWT                          Postgres+pgvector
   RecognitionService (protocol)       MiewID embed (2152-d, L2)      ──▶  animals, embeddings
     POST /identify, /enroll      ──▶  cosine match via pgvector SQL       Auth (JWT)

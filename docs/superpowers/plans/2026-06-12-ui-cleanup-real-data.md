@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove all demo/dummy data from the CarniVision iOS app and make every screen reflect reality: the user's enrolled animals (with the photos they actually took), recent enroll/identify actions from a new server-side `events` table, and search. Strip UI for data that has no backend (weights, health status, scan urgency, charts). 4-tab bar; Add-Animal becomes a **+** on the Animals screen.
+**Goal:** Remove all demo/dummy data from the AgriVision iOS app and make every screen reflect reality: the user's enrolled animals (with the photos they actually took), recent enroll/identify actions from a new server-side `events` table, and search. Strip UI for data that has no backend (weights, health status, scan urgency, charts). 4-tab bar; Add-Animal becomes a **+** on the Animals screen.
 
 **Architecture:** Reads go direct to Supabase (PostgREST + Storage) under RLS using the supabase-swift client (`SupabaseClientProvider.shared`, supabase-swift 2.47.0 exact). Writes with side effects stay in the Cloud Run embedder (`server/`), which gains best-effort `events` inserts via the existing asyncpg pool (`app/db.py`). The iOS data layer grows `AnimalRepository.list()`, a new `EventRepository`, a new `AnimalPhotoLoader` (memory + disk cache), and a rewritten `HerdStore` with no seed data.
 
-**Tech Stack:** FastAPI + asyncpg + pgvector (server), pytest (`-m "not slow"`, env-gated `integration` marker), SwiftUI + supabase-swift 2.47.0 (iOS), XCTest. iOS app target uses old-style PBXGroup — new app-target files need 4-point manual pbxproj registration. `CarniVisionTests` is filesystem-synchronized — test files auto-register.
+**Tech Stack:** FastAPI + asyncpg + pgvector (server), pytest (`-m "not slow"`, env-gated `integration` marker), SwiftUI + supabase-swift 2.47.0 (iOS), XCTest. iOS app target uses old-style PBXGroup — new app-target files need 4-point manual pbxproj registration. `AgriVisionTests` is filesystem-synchronized — test files auto-register.
 
 ---
 
@@ -16,9 +16,9 @@
 
 ```bash
 # iOS build
-xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 # iOS tests
-xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 # Server tests (from server/) — baseline today: 29 passed, 1 skipped, 2 deselected
 .venv/bin/pytest tests/ -m "not slow" -q
 ```
@@ -561,16 +561,16 @@ git commit -m "test(server): RLS cross-owner isolation integration test"
 ### Task 5: `AnimalRepository.list()` + `AnimalRecord` (TDD)
 
 **Files:**
-- Modify: `CarniVision/Services/AnimalRepository.swift`
-- Test: `CarniVisionTests/AnimalRecordDecodingTests.swift` (new; auto-registers — filesystem-synchronized target, NO pbxproj work)
+- Modify: `AgriVision/Services/AnimalRepository.swift`
+- Test: `AgriVisionTests/AnimalRecordDecodingTests.swift` (new; auto-registers — filesystem-synchronized target, NO pbxproj work)
 
 - [ ] **Step 1: RED — write decoding tests**
 
-Create `CarniVisionTests/AnimalRecordDecodingTests.swift`:
+Create `AgriVisionTests/AnimalRecordDecodingTests.swift`:
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 final class AnimalRecordDecodingTests: XCTestCase {
     func testDecodesPostgrestRowWithEmbeddingCount() throws {
@@ -639,11 +639,11 @@ final class AnimalRecordDecodingTests: XCTestCase {
 
 Run:
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: build FAILS (`cannot find 'AnimalRecord' in scope`). That's the red state.
 
-- [ ] **Step 2: GREEN — add `AnimalRecord`, `PostgrestDate`, and `list()` to `CarniVision/Services/AnimalRepository.swift`**
+- [ ] **Step 2: GREEN — add `AnimalRecord`, `PostgrestDate`, and `list()` to `AgriVision/Services/AnimalRepository.swift`**
 
 Insert the following ABOVE `struct AnimalRepository {` (after the `CreatedAnimal` struct):
 
@@ -770,14 +770,14 @@ Then add `list()` inside `struct AnimalRepository`, after the `create(...)` meth
 - [ ] **Step 3: Run the tests**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **` — both new tests pass, all 12 existing tests pass.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Services/AnimalRepository.swift CarniVisionTests/AnimalRecordDecodingTests.swift
+git add AgriVision/Services/AnimalRepository.swift AgriVisionTests/AnimalRecordDecodingTests.swift
 git commit -m "feat(ios): AnimalRepository.list with embedding counts"
 ```
 
@@ -786,11 +786,11 @@ git commit -m "feat(ios): AnimalRepository.list with embedding counts"
 ### Task 6: `EventRepository` (new app-target file + pbxproj registration, TDD)
 
 **Files:**
-- Create: `CarniVision/Services/EventRepository.swift`
-- Modify: `CarniVision.xcodeproj/project.pbxproj` (4-point registration)
-- Test: `CarniVisionTests/EventRecordDecodingTests.swift` (new; auto-registers)
+- Create: `AgriVision/Services/EventRepository.swift`
+- Modify: `AgriVision.xcodeproj/project.pbxproj` (4-point registration)
+- Test: `AgriVisionTests/EventRecordDecodingTests.swift` (new; auto-registers)
 
-- [ ] **Step 1: Create `CarniVision/Services/EventRepository.swift`**
+- [ ] **Step 1: Create `AgriVision/Services/EventRepository.swift`**
 
 ```swift
 import Foundation
@@ -900,11 +900,11 @@ add:
 				A1000000000000000000003D /* EventRepository.swift in Sources */,
 ```
 
-- [ ] **Step 3: Write decoding tests — `CarniVisionTests/EventRecordDecodingTests.swift`**
+- [ ] **Step 3: Write decoding tests — `AgriVisionTests/EventRecordDecodingTests.swift`**
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 final class EventRecordDecodingTests: XCTestCase {
     func testDecodesIdentifyEvent() throws {
@@ -963,14 +963,14 @@ final class EventRecordDecodingTests: XCTestCase {
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **`. If the build fails with `cannot find 'EventRecord' in scope` from the test target, the pbxproj registration (Step 2) is wrong — re-check all four points.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Services/EventRepository.swift CarniVision.xcodeproj/project.pbxproj CarniVisionTests/EventRecordDecodingTests.swift
+git add AgriVision/Services/EventRepository.swift AgriVision.xcodeproj/project.pbxproj AgriVisionTests/EventRecordDecodingTests.swift
 git commit -m "feat(ios): EventRepository for the recent-actions feed"
 ```
 
@@ -979,10 +979,10 @@ git commit -m "feat(ios): EventRepository for the recent-actions feed"
 ### Task 7: `AnimalPhotoLoader` (new app-target file + pbxproj registration)
 
 **Files:**
-- Create: `CarniVision/Services/AnimalPhotoLoader.swift`
-- Modify: `CarniVision.xcodeproj/project.pbxproj` (4-point registration)
+- Create: `AgriVision/Services/AnimalPhotoLoader.swift`
+- Modify: `AgriVision.xcodeproj/project.pbxproj` (4-point registration)
 
-- [ ] **Step 1: Create `CarniVision/Services/AnimalPhotoLoader.swift`**
+- [ ] **Step 1: Create `AgriVision/Services/AnimalPhotoLoader.swift`**
 
 Casing gotcha encoded below: the embedder writes object paths as `{jwt-sub}/{form animal_id}/{kind}/{uuid}.jpg`. The JWT `sub` is always lowercase, but the iOS client sends `UUID.uuidString` (uppercase) as `animal_id`, so the animal path segment is uppercase for app-enrolled animals — the loader probes both casings.
 
@@ -1115,14 +1115,14 @@ add:
 - [ ] **Step 3: Build**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Services/AnimalPhotoLoader.swift CarniVision.xcodeproj/project.pbxproj
+git add AgriVision/Services/AnimalPhotoLoader.swift AgriVision.xcodeproj/project.pbxproj
 git commit -m "feat(ios): AnimalPhotoLoader with memory and disk cache"
 ```
 
@@ -1131,16 +1131,16 @@ git commit -m "feat(ios): AnimalPhotoLoader with memory and disk cache"
 ### Task 8: Rewrite `HerdData.swift` — slim `Animal`, real `ScanEvent`, real `HerdStore` (TDD)
 
 **Files:**
-- Modify: `CarniVision/Models/HerdData.swift` (full rewrite)
-- Modify: `CarniVision/Models/Localization.swift` (event/common keys, EN+TR)
-- Test: `CarniVisionTests/HerdStoreTests.swift` (new; auto-registers)
-- Test: `CarniVisionTests/EventFormattingTests.swift` (new; auto-registers)
+- Modify: `AgriVision/Models/HerdData.swift` (full rewrite)
+- Modify: `AgriVision/Models/Localization.swift` (event/common keys, EN+TR)
+- Test: `AgriVisionTests/HerdStoreTests.swift` (new; auto-registers)
+- Test: `AgriVisionTests/EventFormattingTests.swift` (new; auto-registers)
 
 Note: this task makes the app target temporarily NOT compile (HomeView/AnimalsView/AddAnimalView still reference deleted APIs) if done in isolation — so this task replaces `HerdData.swift` AND is immediately followed by Tasks 9–13 which fix the views. To keep every commit green, this task's test step compiles ONLY after Tasks 9–13? No — instead, this task includes the minimal view stubs? Neither: the correct sequencing is that Tasks 8–13 each leave the tree compiling. To guarantee that, Task 8 rewrites `HerdData.swift` and runs ONLY a syntax check; the full build/test gate for the model change runs at the end of Task 13 and in Task 15. HOWEVER — committing non-compiling code breaks bisect. **Therefore Tasks 8–13 below are written so each compiles:** Task 8's rewrite keeps temporary compatibility shims (clearly marked) that Tasks 10–12 delete.
 
 - [ ] **Step 1: Add event/common localization keys (EN+TR)**
 
-In `CarniVision/Models/Localization.swift`, in the **English** table, after the line `"sex.male": "Male",` add:
+In `AgriVision/Models/Localization.swift`, in the **English** table, after the line `"sex.male": "Male",` add:
 
 ```swift
             // Events (recent actions feed)
@@ -1166,11 +1166,11 @@ In the **Turkish** table, after the line `"sex.male": "Erkek",` add:
             "common.loadError": "Verileriniz yüklenemedi.",
 ```
 
-- [ ] **Step 2: RED — write `CarniVisionTests/HerdStoreTests.swift`**
+- [ ] **Step 2: RED — write `AgriVisionTests/HerdStoreTests.swift`**
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 private final class MockAnimalListing: AnimalListing {
     var records: [AnimalRecord] = []
@@ -1271,11 +1271,11 @@ final class HerdStoreTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 3: RED — write `CarniVisionTests/EventFormattingTests.swift`**
+- [ ] **Step 3: RED — write `AgriVisionTests/EventFormattingTests.swift`**
 
 ```swift
 import XCTest
-@testable import CarniVision
+@testable import AgriVision
 
 @MainActor
 final class EventFormattingTests: XCTestCase {
@@ -1343,7 +1343,7 @@ final class EventFormattingTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 4: GREEN — replace the entire contents of `CarniVision/Models/HerdData.swift`**
+- [ ] **Step 4: GREEN — replace the entire contents of `AgriVision/Models/HerdData.swift`**
 
 ```swift
 import SwiftUI
@@ -1392,7 +1392,7 @@ struct Animal: Identifiable {
 
 extension Animal {
     static let avatarPalette: [Color] = [
-        CarniColors.purple,
+        AgriColors.purple,
         Color(red: 70 / 255, green: 152 / 255, blue: 115 / 255),
         Color(red: 72 / 255, green: 122 / 255, blue: 204 / 255),
         Color(red: 222 / 255, green: 138 / 255, blue: 60 / 255),
@@ -1467,7 +1467,7 @@ struct ScanEvent: Identifiable {
     var color: Color {
         switch result {
         case "enrolled": return Color(red: 64 / 255, green: 130 / 255, blue: 224 / 255)
-        case "identified": return CarniColors.successGreen
+        case "identified": return AgriColors.successGreen
         default: return Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255)
         }
     }
@@ -1574,7 +1574,7 @@ enum AnimalStatus: String {
     case healthy = "Healthy"
 
     var key: String { "status.healthy" }
-    var color: Color { CarniColors.successGreen }
+    var color: Color { AgriColors.successGreen }
 }
 
 extension Animal {
@@ -1604,7 +1604,7 @@ extension HerdStore {
 }
 ```
 
-Note for the worker: `HomeView.swift`'s `ScanRow` references the old `ScanResult` enum API (`scan.result.key/.icon/.color`) and the now-optional `scan.animalName`. To keep this task compiling, ALSO replace the entire body of `private struct ScanRow` in `CarniVision/Views/Main/HomeView.swift` (the full HomeView rewrite happens in Task 10) — replace:
+Note for the worker: `HomeView.swift`'s `ScanRow` references the old `ScanResult` enum API (`scan.result.key/.icon/.color`) and the now-optional `scan.animalName`. To keep this task compiling, ALSO replace the entire body of `private struct ScanRow` in `AgriVision/Views/Main/HomeView.swift` (the full HomeView rewrite happens in Task 10) — replace:
 
 ```swift
     var body: some View {
@@ -1613,24 +1613,24 @@ Note for the worker: `HomeView.swift`'s `ScanRow` references the old `ScanResult
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(scan.animalName)
-                    .font(CarniFont.semibold(15))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(15))
+                    .foregroundStyle(AgriColors.purpleDark)
                 Text("\(scan.animalTag) · \(lang.timeAgo(scan.date))")
-                    .font(CarniFont.regular(12))
-                    .foregroundStyle(CarniColors.tabInactive)
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.tabInactive)
                     .lineLimit(1)
             }
 
             Spacer()
 
             Label(lang.t(scan.result.key), systemImage: scan.result.icon)
-                .font(CarniFont.semibold(11))
+                .font(AgriFont.semibold(11))
                 .foregroundStyle(scan.result.color)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
                 .background(Capsule().fill(scan.result.color.opacity(0.12)))
         }
-        .carniCard(padding: 12)
+        .agriCard(padding: 12)
     }
 ```
 with:
@@ -1641,24 +1641,24 @@ with:
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(scan.animalName ?? lang.t("event.unknownAnimal"))
-                    .font(CarniFont.semibold(15))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(15))
+                    .foregroundStyle(AgriColors.purpleDark)
                 Text(lang.timeAgo(scan.date))
-                    .font(CarniFont.regular(12))
-                    .foregroundStyle(CarniColors.tabInactive)
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.tabInactive)
                     .lineLimit(1)
             }
 
             Spacer()
 
             Label(scan.title(lang), systemImage: scan.icon)
-                .font(CarniFont.semibold(11))
+                .font(AgriFont.semibold(11))
                 .foregroundStyle(scan.color)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
                 .background(Capsule().fill(scan.color.opacity(0.12)))
         }
-        .carniCard(padding: 12)
+        .agriCard(padding: 12)
     }
 ```
 `AnimalsView.swift`'s `lang.t(animal.status.key)` capsule still compiles via the `AnimalStatus` shim — leave it for Task 11.
@@ -1666,14 +1666,14 @@ with:
 - [ ] **Step 5: Run the tests**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **` — 4 HerdStore tests + 4 formatting tests pass, all earlier tests pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add CarniVision/Models/HerdData.swift CarniVision/Models/Localization.swift CarniVision/Views/Main/HomeView.swift CarniVisionTests/HerdStoreTests.swift CarniVisionTests/EventFormattingTests.swift
+git add AgriVision/Models/HerdData.swift AgriVision/Models/Localization.swift AgriVision/Views/Main/HomeView.swift AgriVisionTests/HerdStoreTests.swift AgriVisionTests/EventFormattingTests.swift
 git commit -m "feat(ios): HerdStore loads real animals and events (no seed data)"
 ```
 
@@ -1682,11 +1682,11 @@ git commit -m "feat(ios): HerdStore loads real animals and events (no seed data)
 ### Task 9: 4-tab bar — remove the Add tab, wire `store.load()` and the Add sheet trigger
 
 **Files:**
-- Modify: `CarniVision/Views/Main/MainTabView.swift` (full rewrite)
-- Modify: `CarniVision/Views/Main/CarniTabBar.swift` (remove `.addAnimal`)
-- Modify: `CarniVision/Views/Main/AnimalsView.swift` (binding only, minimal edit)
+- Modify: `AgriVision/Views/Main/MainTabView.swift` (full rewrite)
+- Modify: `AgriVision/Views/Main/AgriTabBar.swift` (remove `.addAnimal`)
+- Modify: `AgriVision/Views/Main/AnimalsView.swift` (binding only, minimal edit)
 
-- [ ] **Step 1: Replace the entire contents of `CarniVision/Views/Main/MainTabView.swift`**
+- [ ] **Step 1: Replace the entire contents of `AgriVision/Views/Main/MainTabView.swift`**
 
 ```swift
 import SwiftUI
@@ -1698,7 +1698,7 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            CarniColors.appBackground
+            AgriColors.appBackground
                 .ignoresSafeArea()
 
             content
@@ -1706,7 +1706,7 @@ struct MainTabView: View {
                 .environmentObject(store)
 
             if selected != .camera {
-                CarniTabBar(selected: $selected)
+                AgriTabBar(selected: $selected)
             }
         }
         // MainTabView only exists while signed in (RootView), so this runs on
@@ -1737,7 +1737,7 @@ struct MainTabView: View {
 }
 ```
 
-- [ ] **Step 2: Update `CarniVision/Views/Main/CarniTabBar.swift`**
+- [ ] **Step 2: Update `AgriVision/Views/Main/AgriTabBar.swift`**
 
 (a) Replace the `AppTab` enum:
 
@@ -1750,7 +1750,7 @@ enum AppTab: Hashable {
 }
 ```
 
-(b) In `CarniTabBar.body`, delete the `add` tab item — remove this block (between `CameraTabButton { ... }` and the settings `TabBarItem`):
+(b) In `AgriTabBar.body`, delete the `add` tab item — remove this block (between `CameraTabButton { ... }` and the settings `TabBarItem`):
 
 ```swift
             TabBarItem(
@@ -1764,7 +1764,7 @@ enum AppTab: Hashable {
 
 The bar is now home, animals, [camera button], settings.
 
-- [ ] **Step 3: Minimal edit to `CarniVision/Views/Main/AnimalsView.swift` so it accepts the binding**
+- [ ] **Step 3: Minimal edit to `AgriVision/Views/Main/AnimalsView.swift` so it accepts the binding**
 
 (Full rewrite comes in Task 11; this keeps the tree compiling.) In `AnimalsScreen`, after the line `@ObservedObject private var lang = LanguageManager.shared`, add:
 
@@ -1783,23 +1783,23 @@ and at the end of `AnimalsScreen.body`'s `NavigationStack { ... }` chain (after 
 - [ ] **Step 4: Build**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Views/Main/MainTabView.swift CarniVision/Views/Main/CarniTabBar.swift CarniVision/Views/Main/AnimalsView.swift
+git add AgriVision/Views/Main/MainTabView.swift AgriVision/Views/Main/AgriTabBar.swift AgriVision/Views/Main/AnimalsView.swift
 git commit -m "feat(ios): 4-tab bar; Add Animal moves to a + on the Animals screen"
 ```
 
 ---### Task 10: HomeView — real header, 3 stat cards, recent actions feed
 
 **Files:**
-- Modify: `CarniVision/Views/Main/HomeView.swift` (full rewrite)
-- Modify: `CarniVision/Models/Localization.swift` (home keys)
-- Modify: `CarniVision/Models/HerdData.swift` (delete shims this screen used)
+- Modify: `AgriVision/Views/Main/HomeView.swift` (full rewrite)
+- Modify: `AgriVision/Models/Localization.swift` (home keys)
+- Modify: `AgriVision/Models/HerdData.swift` (delete shims this screen used)
 
 - [ ] **Step 1: Add the home localization keys (EN+TR)**
 
@@ -1817,9 +1817,9 @@ In the **Turkish** table, after `"home.seeAll": "Tümünü Gör",` add:
             "home.noEvents": "Henüz işlem yok — burada görmek için bir hayvan kaydedin veya tanımlayın.",
 ```
 
-- [ ] **Step 2: Replace the entire contents of `CarniVision/Views/Main/HomeView.swift`**
+- [ ] **Step 2: Replace the entire contents of `AgriVision/Views/Main/HomeView.swift`**
 
-(Keeps the shared `carniCard`, `SectionHeader`, `AnimalAvatar` components; adds shared `AnimalPhotoView` and `LoadErrorBanner`; deletes the bell, weight-trend chart, needs-scanning section, `NeedsScanRow`, the old `ScanRow`, and the `Charts` import. `scanUrgencyColor` is kept ONE more task as a marked shim because the old AnimalsView still calls it; Task 11 deletes it.)
+(Keeps the shared `agriCard`, `SectionHeader`, `AnimalAvatar` components; adds shared `AnimalPhotoView` and `LoadErrorBanner`; deletes the bell, weight-trend chart, needs-scanning section, `NeedsScanRow`, the old `ScanRow`, and the `Charts` import. `scanUrgencyColor` is kept ONE more task as a marked shim because the old AnimalsView still calls it; Task 11 deletes it.)
 
 ```swift
 import SwiftUI
@@ -1829,13 +1829,13 @@ import Supabase
 
 extension View {
     /// White rounded card with the app's soft shadow.
-    func carniCard(padding: CGFloat = 16) -> some View {
+    func agriCard(padding: CGFloat = 16) -> some View {
         self
             .padding(padding)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.white)
-                    .shadow(color: CarniColors.purpleDark.opacity(0.07), radius: 12, y: 4)
+                    .shadow(color: AgriColors.purpleDark.opacity(0.07), radius: 12, y: 4)
             )
     }
 }
@@ -1848,14 +1848,14 @@ struct SectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(CarniFont.bold(18))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.bold(18))
+                .foregroundStyle(AgriColors.purpleDark)
             Spacer()
             if let actionTitle, let action {
                 Button(action: action) {
                     Text(actionTitle)
-                        .font(CarniFont.semibold(13))
-                        .foregroundStyle(CarniColors.purple)
+                        .font(AgriFont.semibold(13))
+                        .foregroundStyle(AgriColors.purple)
                 }
                 .buttonStyle(.plain)
             }
@@ -1873,7 +1873,7 @@ struct AnimalAvatar: View {
             Circle()
                 .fill(color.opacity(0.16))
             Text(name.prefix(1).uppercased())
-                .font(CarniFont.bold(size * 0.42))
+                .font(AgriFont.bold(size * 0.42))
                 .foregroundStyle(color)
         }
         .frame(width: size, height: size)
@@ -1889,7 +1889,7 @@ func scanUrgencyColor(_ lastScanned: Date?) -> Color {
     let days = Date().timeIntervalSince(lastScanned) / 86400
     if days >= 7 { return Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255) }
     if days >= 2 { return Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255) }
-    return CarniColors.successGreen
+    return AgriColors.successGreen
 }
 
 /// Async animal photo with the initials avatar as fallback. Photo lookup is
@@ -1938,17 +1938,17 @@ struct LoadErrorBanner: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255))
             Text(message)
-                .font(CarniFont.regular(13))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.regular(13))
+                .foregroundStyle(AgriColors.purpleDark)
             Spacer()
             Button(action: retry) {
                 Text(lang.t("common.retry"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purple)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purple)
             }
             .buttonStyle(.plain)
         }
-        .carniCard(padding: 12)
+        .agriCard(padding: 12)
     }
 }
 
@@ -1977,7 +1977,7 @@ struct HomeScreen: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
-            .padding(.bottom, CarniLayout.tabBarClearance)
+            .padding(.bottom, AgriLayout.tabBarClearance)
         }
         .refreshable { await store.load() }
     }
@@ -1998,11 +1998,11 @@ struct HomeScreen: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(greeting)
-                .font(CarniFont.regular(14))
-                .foregroundStyle(CarniColors.tabInactive)
+                .font(AgriFont.regular(14))
+                .foregroundStyle(AgriColors.tabInactive)
             Text(signedInEmail)
-                .font(CarniFont.bold(22))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.bold(22))
+                .foregroundStyle(AgriColors.purpleDark)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }
@@ -2012,7 +2012,7 @@ struct HomeScreen: View {
         HStack {
             Spacer()
             ProgressView()
-                .tint(CarniColors.purple)
+                .tint(AgriColors.purple)
                 .padding(.top, 60)
             Spacer()
         }
@@ -2022,7 +2022,7 @@ struct HomeScreen: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible())], spacing: 14) {
             StatCard(
                 icon: "pawprint.fill",
-                tint: CarniColors.purple,
+                tint: AgriColors.purple,
                 value: "\(store.animals.count)",
                 label: lang.t("home.animals")
             )
@@ -2065,15 +2065,15 @@ struct HomeScreen: View {
         VStack(spacing: 10) {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(CarniColors.tabInactive.opacity(0.5))
+                .foregroundStyle(AgriColors.tabInactive.opacity(0.5))
             Text(lang.t("home.noEvents"))
-                .font(CarniFont.regular(14))
-                .foregroundStyle(CarniColors.tabInactive)
+                .font(AgriFont.regular(14))
+                .foregroundStyle(AgriColors.tabInactive)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 30)
-        .carniCard()
+        .agriCard()
     }
 }
 
@@ -2094,14 +2094,14 @@ private struct StatCard: View {
                         .fill(tint.opacity(0.13))
                 )
             Text(value)
-                .font(CarniFont.bold(21))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.bold(21))
+                .foregroundStyle(AgriColors.purpleDark)
             Text(label)
-                .font(CarniFont.regular(12))
-                .foregroundStyle(CarniColors.tabInactive)
+                .font(AgriFont.regular(12))
+                .foregroundStyle(AgriColors.tabInactive)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .carniCard(padding: 14)
+        .agriCard(padding: 14)
     }
 }
 
@@ -2120,12 +2120,12 @@ private struct EventRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(event.title(lang))
-                    .font(CarniFont.semibold(14))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(14))
+                    .foregroundStyle(AgriColors.purpleDark)
                     .lineLimit(1)
                 Text(lang.timeAgo(event.date))
-                    .font(CarniFont.regular(12))
-                    .foregroundStyle(CarniColors.tabInactive)
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.tabInactive)
             }
 
             Spacer()
@@ -2136,12 +2136,12 @@ private struct EventRow: View {
                 .padding(8)
                 .background(Circle().fill(event.color.opacity(0.12)))
         }
-        .carniCard(padding: 12)
+        .agriCard(padding: 12)
     }
 }
 ```
 
-- [ ] **Step 3: Delete the shims HomeView no longer needs from `CarniVision/Models/HerdData.swift`**
+- [ ] **Step 3: Delete the shims HomeView no longer needs from `AgriVision/Models/HerdData.swift`**
 
 In the `TEMPORARY compatibility shims` section, remove these members from `extension HerdStore` (AnimalsView/AddAnimalView shims stay until Tasks 11–12):
 
@@ -2156,14 +2156,14 @@ In the `TEMPORARY compatibility shims` section, remove these members from `exten
 - [ ] **Step 4: Build and test**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Views/Main/HomeView.swift CarniVision/Models/Localization.swift CarniVision/Models/HerdData.swift
+git add AgriVision/Views/Main/HomeView.swift AgriVision/Models/Localization.swift AgriVision/Models/HerdData.swift
 git commit -m "feat(ios): Home shows real stats and recent actions feed"
 ```
 
@@ -2172,9 +2172,9 @@ git commit -m "feat(ios): Home shows real stats and recent actions feed"
 ### Task 11: AnimalsView + AnimalDetailView on real data
 
 **Files:**
-- Modify: `CarniVision/Views/Main/AnimalsView.swift` (full rewrite)
-- Modify: `CarniVision/Models/Localization.swift` (animals/detail keys)
-- Modify: `CarniVision/Models/HerdData.swift` (delete more shims)
+- Modify: `AgriVision/Views/Main/AnimalsView.swift` (full rewrite)
+- Modify: `AgriVision/Models/Localization.swift` (animals/detail keys)
+- Modify: `AgriVision/Models/HerdData.swift` (delete more shims)
 
 - [ ] **Step 1: Add localization keys (EN+TR)**
 
@@ -2202,7 +2202,7 @@ Turkish table, after `"detail.notRegistered": "Kayıtlı Değil",` add:
             "detail.enrolled": "Kayıt Tarihi",
 ```
 
-- [ ] **Step 2: Replace the entire contents of `CarniVision/Views/Main/AnimalsView.swift`**
+- [ ] **Step 2: Replace the entire contents of `AgriVision/Views/Main/AnimalsView.swift`**
 
 (Deletes the `Charts` import, weight/last-scan card elements, charts, weigh-in table; adds the + button, photo thumbnails, pull-to-refresh, empty/loading/error states. Search + sex filter unchanged.)
 
@@ -2285,10 +2285,10 @@ struct AnimalsScreen: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
-                .padding(.bottom, CarniLayout.tabBarClearance)
+                .padding(.bottom, AgriLayout.tabBarClearance)
             }
             .refreshable { await store.load() }
-            .background(CarniColors.appBackground)
+            .background(AgriColors.appBackground)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showAddAnimal) {
                 AddAnimalScreen()
@@ -2300,11 +2300,11 @@ struct AnimalsScreen: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(lang.t("animals.title"))
-                    .font(CarniFont.bold(24))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.bold(24))
+                    .foregroundStyle(AgriColors.purpleDark)
                 Text(lang.t("animals.subtitle", store.animals.count, store.registeredCount))
-                    .font(CarniFont.regular(13))
-                    .foregroundStyle(CarniColors.tabInactive)
+                    .font(AgriFont.regular(13))
+                    .foregroundStyle(AgriColors.tabInactive)
             }
             Spacer()
             Button {
@@ -2316,7 +2316,7 @@ struct AnimalsScreen: View {
                     .frame(width: 42, height: 42)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(CarniColors.purple)
+                            .fill(AgriColors.purple)
                     )
             }
             .buttonStyle(.plain)
@@ -2327,21 +2327,21 @@ struct AnimalsScreen: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(CarniColors.tabInactive)
+                .foregroundStyle(AgriColors.tabInactive)
             TextField(lang.t("animals.search"), text: $searchText)
-                .font(CarniFont.regular(15))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.regular(15))
+                .foregroundStyle(AgriColors.purpleDark)
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(CarniColors.tabInactive)
+                        .foregroundStyle(AgriColors.tabInactive)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .carniCard(padding: 13)
+        .agriCard(padding: 13)
     }
 
     private var filterChips: some View {
@@ -2351,12 +2351,12 @@ struct AnimalsScreen: View {
                     withAnimation(.easeOut(duration: 0.15)) { filter = option }
                 } label: {
                     Text(lang.t(option.key))
-                        .font(CarniFont.semibold(13))
-                        .foregroundStyle(filter == option ? .white : CarniColors.purple)
+                        .font(AgriFont.semibold(13))
+                        .foregroundStyle(filter == option ? .white : AgriColors.purple)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(
-                            Capsule().fill(filter == option ? CarniColors.purple : CarniColors.purple.opacity(0.1))
+                            Capsule().fill(filter == option ? AgriColors.purple : AgriColors.purple.opacity(0.1))
                         )
                 }
                 .buttonStyle(.plain)
@@ -2368,7 +2368,7 @@ struct AnimalsScreen: View {
         HStack {
             Spacer()
             ProgressView()
-                .tint(CarniColors.purple)
+                .tint(AgriColors.purple)
                 .padding(.top, 50)
             Spacer()
         }
@@ -2378,10 +2378,10 @@ struct AnimalsScreen: View {
         VStack(spacing: 10) {
             Image(systemName: "pawprint")
                 .font(.system(size: 32, weight: .semibold))
-                .foregroundStyle(CarniColors.tabInactive.opacity(0.5))
+                .foregroundStyle(AgriColors.tabInactive.opacity(0.5))
             Text(lang.t("animals.emptyHerd"))
-                .font(CarniFont.semibold(15))
-                .foregroundStyle(CarniColors.tabInactive)
+                .font(AgriFont.semibold(15))
+                .foregroundStyle(AgriColors.tabInactive)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -2392,10 +2392,10 @@ struct AnimalsScreen: View {
         VStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 32, weight: .semibold))
-                .foregroundStyle(CarniColors.tabInactive.opacity(0.5))
+                .foregroundStyle(AgriColors.tabInactive.opacity(0.5))
             Text(lang.t("animals.empty"))
-                .font(CarniFont.semibold(15))
-                .foregroundStyle(CarniColors.tabInactive)
+                .font(AgriFont.semibold(15))
+                .foregroundStyle(AgriColors.tabInactive)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
@@ -2418,29 +2418,29 @@ private struct AnimalCard: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
                     Text(animal.name)
-                        .font(CarniFont.semibold(16))
-                        .foregroundStyle(CarniColors.purpleDark)
+                        .font(AgriFont.semibold(16))
+                        .foregroundStyle(AgriColors.purpleDark)
                     if animal.muzzleRegistered {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 12))
-                            .foregroundStyle(CarniColors.successGreen)
+                            .foregroundStyle(AgriColors.successGreen)
                     }
                 }
                 Text(animal.tag)
-                    .font(CarniFont.regular(12))
-                    .foregroundStyle(CarniColors.purple)
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.purple)
                 Text("\(animal.breed) · \(animal.ageDescription(lang))")
-                    .font(CarniFont.regular(12))
-                    .foregroundStyle(CarniColors.tabInactive)
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.tabInactive)
             }
 
             Spacer()
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(CarniColors.tabInactive)
+                .foregroundStyle(AgriColors.tabInactive)
         }
-        .carniCard(padding: 14)
+        .agriCard(padding: 14)
     }
 }
 
@@ -2460,9 +2460,9 @@ struct AnimalDetailView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, CarniLayout.tabBarClearance)
+            .padding(.bottom, AgriLayout.tabBarClearance)
         }
-        .background(CarniColors.appBackground)
+        .background(AgriColors.appBackground)
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -2473,19 +2473,19 @@ struct AnimalDetailView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .foregroundStyle(AgriColors.purpleDark)
                     .frame(width: 38, height: 38)
                     .background(
                         Circle()
                             .fill(Color.white)
-                            .shadow(color: CarniColors.purpleDark.opacity(0.08), radius: 8, y: 3)
+                            .shadow(color: AgriColors.purpleDark.opacity(0.08), radius: 8, y: 3)
                     )
             }
             .buttonStyle(.plain)
             Spacer()
             Text(lang.t("detail.title"))
-                .font(CarniFont.semibold(16))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.semibold(16))
+                .foregroundStyle(AgriColors.purpleDark)
             Spacer()
             Color.clear.frame(width: 38, height: 38)
         }
@@ -2502,28 +2502,28 @@ struct AnimalDetailView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(animal.name)
-                    .font(CarniFont.bold(22))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.bold(22))
+                    .foregroundStyle(AgriColors.purpleDark)
                 Text(animal.tag)
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purple)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purple)
                 Label(
                     lang.t(animal.muzzleRegistered ? "detail.muzzleID" : "detail.notRegistered"),
                     systemImage: animal.muzzleRegistered ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
                 )
-                .font(CarniFont.semibold(11))
-                .foregroundStyle(animal.muzzleRegistered ? CarniColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255))
+                .font(AgriFont.semibold(11))
+                .foregroundStyle(animal.muzzleRegistered ? AgriColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255))
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
                 .background(
                     Capsule().fill(
-                        (animal.muzzleRegistered ? CarniColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255)).opacity(0.12)
+                        (animal.muzzleRegistered ? AgriColors.successGreen : Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255)).opacity(0.12)
                     )
                 )
             }
             Spacer(minLength: 0)
         }
-        .carniCard()
+        .agriCard()
     }
 
     private var infoGrid: some View {
@@ -2543,21 +2543,21 @@ private struct InfoTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label)
-                .font(CarniFont.regular(12))
-                .foregroundStyle(CarniColors.tabInactive)
+                .font(AgriFont.regular(12))
+                .foregroundStyle(AgriColors.tabInactive)
             Text(value)
-                .font(CarniFont.semibold(15))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.semibold(15))
+                .foregroundStyle(AgriColors.purpleDark)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .carniCard(padding: 14)
+        .agriCard(padding: 14)
     }
 }
 ```
 
 (The duplicate `.sheet` added in Task 9 Step 3 is replaced by this rewrite — the rewrite includes it exactly once.)
 
-- [ ] **Step 3: Delete the shims AnimalsView used from `CarniVision/Models/HerdData.swift`**
+- [ ] **Step 3: Delete the shims AnimalsView used from `AgriVision/Models/HerdData.swift`**
 
 From the `TEMPORARY compatibility shims` section delete:
 
@@ -2572,7 +2572,7 @@ enum AnimalStatus: String {
     case healthy = "Healthy"
 
     var key: String { "status.healthy" }
-    var color: Color { CarniColors.successGreen }
+    var color: Color { AgriColors.successGreen }
 }
 
 extension Animal {
@@ -2590,7 +2590,7 @@ and from `extension HerdStore` delete:
     var animalsByScanUrgency: [Animal] { animals }
 ```
 
-Also delete the temporary `scanUrgencyColor` shim from `CarniVision/Views/Main/HomeView.swift` (the whole block added in Task 10, including its `// TEMPORARY shim` comment):
+Also delete the temporary `scanUrgencyColor` shim from `AgriVision/Views/Main/HomeView.swift` (the whole block added in Task 10, including its `// TEMPORARY shim` comment):
 
 ```swift
 // TEMPORARY shim (deleted in Task 11): the old AnimalsView still calls this
@@ -2602,7 +2602,7 @@ func scanUrgencyColor(_ lastScanned: Date?) -> Color {
     let days = Date().timeIntervalSince(lastScanned) / 86400
     if days >= 7 { return Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255) }
     if days >= 2 { return Color(red: 226 / 255, green: 142 / 255, blue: 48 / 255) }
-    return CarniColors.successGreen
+    return AgriColors.successGreen
 }
 ```
 
@@ -2611,14 +2611,14 @@ func scanUrgencyColor(_ lastScanned: Date?) -> Color {
 - [ ] **Step 4: Build and test**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Views/Main/AnimalsView.swift CarniVision/Views/Main/HomeView.swift CarniVision/Models/Localization.swift CarniVision/Models/HerdData.swift
+git add AgriVision/Views/Main/AnimalsView.swift AgriVision/Views/Main/HomeView.swift AgriVision/Models/Localization.swift AgriVision/Models/HerdData.swift
 git commit -m "feat(ios): Animals list and detail on real data with photos"
 ```
 
@@ -2627,10 +2627,10 @@ git commit -m "feat(ios): Animals list and detail on real data with photos"
 ### Task 12: AddAnimalView — sheet presentation, real fields only
 
 **Files:**
-- Modify: `CarniVision/Views/Main/AddAnimalView.swift` (full rewrite)
-- Modify: `CarniVision/Models/HerdData.swift` (delete the last shims)
+- Modify: `AgriVision/Views/Main/AddAnimalView.swift` (full rewrite)
+- Modify: `AgriVision/Models/HerdData.swift` (delete the last shims)
 
-- [ ] **Step 1: Replace the entire contents of `CarniVision/Views/Main/AddAnimalView.swift`**
+- [ ] **Step 1: Replace the entire contents of `AgriVision/Views/Main/AddAnimalView.swift`**
 
 (Removes the weight field, the no-op muzzle-scanned toggle card, and the never-shown toast; adds a close button for sheet presentation; save → `repository.create` → optimistic `store.addAnimal` → enrollment camera; after a successful enrollment the store reloads and the sheet dismisses.)
 
@@ -2678,7 +2678,7 @@ struct AddAnimalScreen: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(CarniColors.appBackground.ignoresSafeArea())
+        .background(AgriColors.appBackground.ignoresSafeArea())
         .fullScreenCover(item: $enrollAnimalID) { animalID in
             CameraScreen(
                 onClose: {
@@ -2698,11 +2698,11 @@ struct AddAnimalScreen: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(lang.t("add.title"))
-                    .font(CarniFont.bold(24))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.bold(24))
+                    .foregroundStyle(AgriColors.purpleDark)
                 Text(lang.t("add.subtitle"))
-                    .font(CarniFont.regular(13))
-                    .foregroundStyle(CarniColors.tabInactive)
+                    .font(AgriFont.regular(13))
+                    .foregroundStyle(AgriColors.tabInactive)
             }
             Spacer()
             Button {
@@ -2710,12 +2710,12 @@ struct AddAnimalScreen: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .foregroundStyle(AgriColors.purpleDark)
                     .frame(width: 36, height: 36)
                     .background(
                         Circle()
                             .fill(Color.white)
-                            .shadow(color: CarniColors.purpleDark.opacity(0.08), radius: 8, y: 3)
+                            .shadow(color: AgriColors.purpleDark.opacity(0.08), radius: 8, y: 3)
                     )
             }
             .buttonStyle(.plain)
@@ -2729,8 +2729,8 @@ struct AddAnimalScreen: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.breed"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purpleDark)
                 Menu {
                     ForEach(breeds, id: \.self) { option in
                         Button(option) { breed = option }
@@ -2738,12 +2738,12 @@ struct AddAnimalScreen: View {
                 } label: {
                     HStack {
                         Text(breed)
-                            .font(CarniFont.regular(15))
-                            .foregroundStyle(CarniColors.purpleDark)
+                            .font(AgriFont.regular(15))
+                            .foregroundStyle(AgriColors.purpleDark)
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CarniColors.tabInactive)
+                            .foregroundStyle(AgriColors.tabInactive)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -2753,21 +2753,21 @@ struct AddAnimalScreen: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("detail.sex"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purpleDark)
                 HStack(spacing: 8) {
                     ForEach(AnimalSex.allCases) { option in
                         Button {
                             sex = option
                         } label: {
                             Text(lang.t(option.key))
-                                .font(CarniFont.semibold(14))
-                                .foregroundStyle(sex == option ? .white : CarniColors.purple)
+                                .font(AgriFont.semibold(14))
+                                .foregroundStyle(sex == option ? .white : AgriColors.purple)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 11)
                                 .background(
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(sex == option ? CarniColors.purple : CarniColors.purple.opacity(0.08))
+                                        .fill(sex == option ? AgriColors.purple : AgriColors.purple.opacity(0.08))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -2777,12 +2777,12 @@ struct AddAnimalScreen: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.dob"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purpleDark)
                 HStack {
                     DatePicker("", selection: $birthDate, in: ...Date(), displayedComponents: .date)
                         .labelsHidden()
-                        .tint(CarniColors.purple)
+                        .tint(AgriColors.purple)
                         .environment(\.locale, lang.language.locale)
                     Spacer()
                 }
@@ -2791,31 +2791,31 @@ struct AddAnimalScreen: View {
                 .background(fieldBackground)
             }
         }
-        .carniCard()
+        .agriCard()
     }
 
     private var fieldBackground: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(CarniColors.appBackground)
+            .fill(AgriColors.appBackground)
     }
 
     private var saveButton: some View {
         VStack(spacing: 10) {
             if let saveError {
                 Text(saveError)
-                    .font(CarniFont.regular(13))
+                    .font(AgriFont.regular(13))
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button(action: save) {
                 Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("add.save"))
-                    .font(CarniFont.bold(16))
+                    .font(AgriFont.bold(16))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(canSave && !isSaving ? CarniColors.purple : CarniColors.purple.opacity(0.35))
+                            .fill(canSave && !isSaving ? AgriColors.purple : AgriColors.purple.opacity(0.35))
                     )
             }
             .buttonStyle(.plain)
@@ -2877,16 +2877,16 @@ private struct FormField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(label)
-                .font(CarniFont.semibold(13))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.semibold(13))
+                .foregroundStyle(AgriColors.purpleDark)
             TextField(placeholder, text: $text)
-                .font(CarniFont.regular(15))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.regular(15))
+                .foregroundStyle(AgriColors.purpleDark)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(CarniColors.appBackground)
+                        .fill(AgriColors.appBackground)
                 )
         }
     }
@@ -2897,7 +2897,7 @@ extension String: Identifiable {
 }
 ```
 
-- [ ] **Step 2: Delete the remaining shims from `CarniVision/Models/HerdData.swift`**
+- [ ] **Step 2: Delete the remaining shims from `AgriVision/Models/HerdData.swift`**
 
 Remove the entire `// MARK: - TEMPORARY compatibility shims` section — at this point the only remaining shims are:
 
@@ -2921,14 +2921,14 @@ Delete them and the MARK comment block. `HerdData.swift` now ends with `loadErro
 - [ ] **Step 3: Build and test**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Views/Main/AddAnimalView.swift CarniVision/Models/HerdData.swift
+git add AgriVision/Views/Main/AddAnimalView.swift AgriVision/Models/HerdData.swift
 git commit -m "feat(ios): Add Animal sheet slimmed to real fields"
 ```
 
@@ -2937,7 +2937,7 @@ git commit -m "feat(ios): Add Animal sheet slimmed to real fields"
 ### Task 13: CameraView — identify result card resolves name + photo
 
 **Files:**
-- Modify: `CarniVision/Views/Main/CameraView.swift`
+- Modify: `AgriVision/Views/Main/CameraView.swift`
 
 - [ ] **Step 1: Add the store environment object to `CameraScreen`**
 
@@ -2955,11 +2955,11 @@ Replace the identified branch of `identifyOverlay` — the block:
                 if let result = model.identifyResult {
                     if result.isIdentified {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 50)).foregroundStyle(CarniColors.successGreen)
+                            .font(.system(size: 50)).foregroundStyle(AgriColors.successGreen)
                         Text(result.name ?? lang.t("camera.identify.identified"))
-                            .font(CarniFont.bold(22)).foregroundStyle(.white)
+                            .font(AgriFont.bold(22)).foregroundStyle(.white)
                         Text(lang.t("camera.identify.score", result.score * 100))
-                            .font(CarniFont.regular(15)).foregroundStyle(.white.opacity(0.85))
+                            .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
                     } else {
 ```
 
@@ -2982,16 +2982,16 @@ with:
                             )
                         } else {
                             Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 50)).foregroundStyle(CarniColors.successGreen)
+                                .font(.system(size: 50)).foregroundStyle(AgriColors.successGreen)
                         }
                         Text(matched?.name ?? result.name ?? lang.t("camera.identify.identified"))
-                            .font(CarniFont.bold(22)).foregroundStyle(.white)
+                            .font(AgriFont.bold(22)).foregroundStyle(.white)
                         if let matched, !matched.tag.isEmpty {
                             Text(matched.tag)
-                                .font(CarniFont.semibold(14)).foregroundStyle(.white.opacity(0.85))
+                                .font(AgriFont.semibold(14)).foregroundStyle(.white.opacity(0.85))
                         }
                         Text(lang.t("camera.identify.score", result.score * 100))
-                            .font(CarniFont.regular(15)).foregroundStyle(.white.opacity(0.85))
+                            .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
                     } else {
 ```
 
@@ -3032,14 +3032,14 @@ with:
 - [ ] **Step 5: Build and test**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add CarniVision/Views/Main/CameraView.swift
+git add AgriVision/Views/Main/CameraView.swift
 git commit -m "feat(ios): identify result card resolves animal name and photo"
 ```
 
@@ -3048,8 +3048,8 @@ git commit -m "feat(ios): identify result card resolves animal name and photo"
 ### Task 14: Settings de-demo + localization cleanup
 
 **Files:**
-- Modify: `CarniVision/Views/Main/SettingsView.swift`
-- Modify: `CarniVision/Models/Localization.swift` (remove dead keys, EN+TR)
+- Modify: `AgriVision/Views/Main/SettingsView.swift`
+- Modify: `AgriVision/Models/Localization.swift` (remove dead keys, EN+TR)
 
 - [ ] **Step 1: De-demo SettingsView**
 
@@ -3063,24 +3063,24 @@ git commit -m "feat(ios): identify result card resolves animal name and photo"
     private var profileCard: some View {
         HStack(spacing: 14) {
             ZStack {
-                Circle().fill(CarniColors.purple.opacity(0.14))
+                Circle().fill(AgriColors.purple.opacity(0.14))
                 Text(signedInEmail.prefix(1).uppercased())
-                    .font(CarniFont.bold(20))
-                    .foregroundStyle(CarniColors.purple)
+                    .font(AgriFont.bold(20))
+                    .foregroundStyle(AgriColors.purple)
             }
             .frame(width: 56, height: 56)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(signedInEmail)
-                    .font(CarniFont.bold(16))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.bold(16))
+                    .foregroundStyle(AgriColors.purpleDark)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
 
             Spacer()
         }
-        .carniCard()
+        .agriCard()
     }
 ```
 
@@ -3090,7 +3090,7 @@ git commit -m "feat(ios): identify result card resolves animal name and photo"
 - Delete the now-unused `@State private var notificationsOn = true`, `@State private var autoCaptureOn = true`, `@State private var metricUnits = true`.
 - Delete the now-unused `private struct ToggleRow: View { ... }` at the bottom of the file.
 
-- [ ] **Step 2: Remove dead localization keys from BOTH tables (EN and TR) in `CarniVision/Models/Localization.swift`**
+- [ ] **Step 2: Remove dead localization keys from BOTH tables (EN and TR) in `AgriVision/Models/Localization.swift`**
 
 Delete these key lines from the English table AND their counterparts in the Turkish table:
 
@@ -3113,23 +3113,23 @@ settings.preferences, settings.notifications, settings.autoCapture, settings.met
 ```bash
 cd /Users/korkutkaanbalta/Documents/carni_vision && \
 for key in home.avgWeight home.weightTrend home.recentScans home.needsScan tab.add status.healthy status.pregnant status.attention scan.identified scan.newID scan.noMatch animals.lastScan animals.never detail.currentWeight detail.lastScan detail.weightHistory detail.weighIns detail.notEnough add.scanPrompt add.scanDone add.scanHint add.scanHintDone add.weight add.weightPh add.saved settings.preferences settings.notifications settings.autoCapture settings.metric; do \
-  grep -rn "\"$key\"" CarniVision --include="*.swift" && echo "DEAD KEY STILL REFERENCED: $key"; \
+  grep -rn "\"$key\"" AgriVision --include="*.swift" && echo "DEAD KEY STILL REFERENCED: $key"; \
 done; \
-grep -rn "WeightEntry\|AnimalStatus\|markLastAddedMuzzleRegistered\|animalsByScanUrgency\|scanUrgencyColor\|herdTrend\|recentScans\|TEMPORARY compatibility" CarniVision --include="*.swift"
+grep -rn "WeightEntry\|AnimalStatus\|markLastAddedMuzzleRegistered\|animalsByScanUrgency\|scanUrgencyColor\|herdTrend\|recentScans\|TEMPORARY compatibility" AgriVision --include="*.swift"
 ```
 Expected: no output from either grep (every dead key and every Task 8 shim is gone).
 
 - [ ] **Step 4: Build and test**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Views/Main/SettingsView.swift CarniVision/Models/Localization.swift
+git add AgriVision/Views/Main/SettingsView.swift AgriVision/Models/Localization.swift
 git commit -m "chore(ios): de-demo Settings and remove localization keys for deleted UI"
 ```
 
@@ -3142,7 +3142,7 @@ git commit -m "chore(ios): de-demo Settings and remove localization keys for del
 - [ ] **Step 1: Full iOS test run**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 Expected: `** TEST SUCCEEDED **` — all 12 pre-existing tests (AuthServiceTests, MultipartFormDataTests, RecognitionDecodingTests) plus the new AnimalRecordDecodingTests (2), EventRecordDecodingTests (2), HerdStoreTests (4), EventFormattingTests (4).
 
@@ -3156,7 +3156,7 @@ Expected: `33 passed, 2 skipped, 2 deselected`.
 - [ ] **Step 3: Release build of the app (catches preview/asset issues `test` can mask)**
 
 ```bash
-cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+cd /Users/korkutkaanbalta/Documents/carni_vision && xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 Expected: `** BUILD SUCCEEDED **`.
 
