@@ -1,0 +1,17 @@
+// Base signing config — COMMITTED, shared by everyone.
+//
+// Per-developer values (your Apple team + your unique bundle id) live in
+// Signing.local.xcconfig, which is git-ignored so it never conflicts with
+// teammates. Copy Signing.local.xcconfig.example -> Signing.local.xcconfig
+// and fill in your own values.
+
+// Fallback bundle id. Each developer overrides this in their local file with
+// a unique id (a personal/free Apple team cannot share one bundle id).
+PRODUCT_BUNDLE_IDENTIFIER = com.agrivision.app
+
+// No default team on purpose: until you create Signing.local.xcconfig the
+// build fails with a clear "no team" error instead of signing as someone else.
+DEVELOPMENT_TEAM =
+
+// Pull in this machine's local overrides if present (the ? makes it optional).
+#include? "Signing.local.xcconfig"

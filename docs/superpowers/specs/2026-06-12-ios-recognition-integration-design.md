@@ -1,4 +1,4 @@
-# CarniVision iOS Recognition Integration — Design Spec
+# AgriVision iOS Recognition Integration — Design Spec
 
 **Date:** 2026-06-12
 **Status:** Approved design, pre-implementation
@@ -8,7 +8,7 @@ is specified in `2026-06-11-carnivision-embedder-api-design.md`.
 
 ## Goal
 
-Connect the existing CarniVision iOS app to the live Cloud Run embedder so that a
+Connect the existing AgriVision iOS app to the live Cloud Run embedder so that a
 farmer can enroll a cow's muzzle (5-photo guided burst + 1 full-body shot) and
 identify animals in real time. Auth moves from a fake flag to real Supabase sessions.
 No new ML work; no new server work; no persistence beyond what Supabase already holds.
@@ -30,7 +30,7 @@ touching this sub-project's code.
 The embedder is already deployed and verified live:
 
 ```
-iPhone (CarniVision SwiftUI)              Cloud Run (carnivision-embedder)
+iPhone (AgriVision SwiftUI)              Cloud Run (carnivision-embedder)
   SupabaseClientProvider (SDK)              europe-west1
   AuthService  ──── sign-in/JWT ──────▶    Supabase Auth (ES256 JWTs)
   AnimalRepository ─ insert ───────────▶   Supabase Postgres (animals table, RLS)
@@ -50,7 +50,7 @@ regardless of the long-term biometric-registry direction.
 
 ## Current app state (facts from codebase exploration)
 
-- SwiftUI, iOS 17 target; bundle `com.carnivision.app`; signing team `Z23895JP8U`.
+- SwiftUI, iOS 17 target; bundle `com.agrivision.app`; signing team `Z23895JP8U`.
 - Auth: print-stub screens gated by a fake `@State` flag in `RootView`. Zero real
   networking. No SPM packages.
 - Camera pipeline is **complete and unchanged by this spec**: `CameraView.swift`'s

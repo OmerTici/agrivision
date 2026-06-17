@@ -1,0 +1,8 @@
+// TEMPLATE — copy this file to "Signing.local.xcconfig" in the same folder,
+// then set YOUR own values. Signing.local.xcconfig is git-ignored.
+//
+// Find your Team ID in Xcode -> Settings -> Accounts (select your account, it
+// shows next to the team name), or at developer.apple.com -> Membership.
+
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+PRODUCT_BUNDLE_IDENTIFIER = com.yourname.agrivision

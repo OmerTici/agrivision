@@ -8,7 +8,7 @@
 
 The embedder is a scale-to-zero Cloud Run service: it sleeps after ~15 minutes
 idle and takes 20–30 s to cold-start. The app's only warmup today runs once at
-launch (`CarniVisionApp.swift:28-31`, `await recognition.warmUp()` after
+launch (`AgriVisionApp.swift:28-31`, `await recognition.warmUp()` after
 `auth.bootstrap()`), and the only user-facing feedback is a blocking loading
 screen on the camera tab (`CameraView.swift:762`, gated on `!recognition.isReady`).
 

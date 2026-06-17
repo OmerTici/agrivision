@@ -50,7 +50,7 @@ only backend code change is the identify match query.
 - Photos and embeddings are **retained** in storage on soft-delete — this is
   what makes restore possible.
 
-### 2. iOS — service layer (`CarniVision/Services/AnimalRepository.swift`)
+### 2. iOS — service layer (`AgriVision/Services/AnimalRepository.swift`)
 
 - `update(animalID:name:tag:breed:sex:birthDate:)` → Postgrest PATCH on
   `animals?id=eq.{id}`.
@@ -58,7 +58,7 @@ only backend code change is the identify match query.
 - `restore(animalID:)` → PATCH `deleted_at = null`.
 - `list()` → add `deleted_at=is.null` filter so archived animals drop out.
 
-### 3. iOS — state (`HerdStore` in `CarniVision/Models/HerdData.swift`)
+### 3. iOS — state (`HerdStore` in `AgriVision/Models/HerdData.swift`)
 
 - `updateAnimal(...)` — replace the matching `Animal` in place.
 - `removeAnimal(id:)` — optimistic removal from `animals`.

@@ -8,14 +8,14 @@
 
 **Tech Stack:** FastAPI + asyncpg + pgvector (server), pytest (`-m "not slow and not integration"`, env-gated `integration` marker), SwiftUI + supabase-swift 2.47.0 (iOS), XCTest.
 
-**iOS file-placement constraint:** The app target uses old-style PBXGroup — new app-target `.swift` files need 4-point manual pbxproj registration. To avoid that, **all new SwiftUI types in this plan are added to existing files** (`AddAnimalView.swift`, `AnimalsView.swift`). `CarniVisionTests` is filesystem-synchronized, so test edits to existing test files need no registration.
+**iOS file-placement constraint:** The app target uses old-style PBXGroup — new app-target `.swift` files need 4-point manual pbxproj registration. To avoid that, **all new SwiftUI types in this plan are added to existing files** (`AddAnimalView.swift`, `AnimalsView.swift`). `AgriVisionTests` is filesystem-synchronized, so test edits to existing test files need no registration.
 
 **Test commands:**
 ```bash
 # iOS build
-xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 # iOS tests
-xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 # Server fast suite (run from server/)
 .venv/bin/pytest tests/ -m "not slow and not integration" -q
 ```
@@ -28,12 +28,12 @@ xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'plat
 - `server/sql/migrations/2026-06-13-add-animals-deleted-at.sql` — live-DB migration (create).
 - `server/app/db.py` — `MATCH_SQL` excludes soft-deleted animals (modify).
 - `server/tests/test_db.py` — assert the new filter is in `MATCH_SQL` (modify).
-- `CarniVision/Services/AnimalRepository.swift` — `update`, `softDelete`, `restore`; `list()` filter (modify).
-- `CarniVision/Models/HerdData.swift` — `HerdStore.updateAnimal/removeAnimal/restoreAnimal/clearRecentlyArchived` + `recentlyArchived` (modify).
-- `CarniVisionTests/HerdStoreTests.swift` — store mutation tests (modify).
-- `CarniVision/Views/Main/AddAnimalView.swift` — extract `AnimalDetailsForm`; add `EditAnimalScreen` (modify).
-- `CarniVision/Views/Main/AnimalsView.swift` — Edit/Delete buttons in `AnimalDetailView`, swipe-to-delete in list, `UndoToast` (modify).
-- `CarniVision/Models/Localization.swift` — en/tr strings for edit/delete/undo (modify).
+- `AgriVision/Services/AnimalRepository.swift` — `update`, `softDelete`, `restore`; `list()` filter (modify).
+- `AgriVision/Models/HerdData.swift` — `HerdStore.updateAnimal/removeAnimal/restoreAnimal/clearRecentlyArchived` + `recentlyArchived` (modify).
+- `AgriVisionTests/HerdStoreTests.swift` — store mutation tests (modify).
+- `AgriVision/Views/Main/AddAnimalView.swift` — extract `AnimalDetailsForm`; add `EditAnimalScreen` (modify).
+- `AgriVision/Views/Main/AnimalsView.swift` — Edit/Delete buttons in `AnimalDetailView`, swipe-to-delete in list, `UndoToast` (modify).
+- `AgriVision/Models/Localization.swift` — en/tr strings for edit/delete/undo (modify).
 
 ---
 
@@ -134,7 +134,7 @@ git commit -m "feat(match): exclude soft-deleted animals from identify"
 ## Task 3: Repository — `update`, `softDelete`, `restore`, and `list()` filter
 
 **Files:**
-- Modify: `CarniVision/Services/AnimalRepository.swift`
+- Modify: `AgriVision/Services/AnimalRepository.swift`
 
 No unit test: these methods make live PostgREST network calls (the existing `create()`/`list()` are verified by build + integration, not unit-mocked). Verification is a successful build. The store-level logic that IS unit-tested lives in Task 4.
 
@@ -241,7 +241,7 @@ In `AnimalRepository.swift`, after `list()` (before the closing brace of `struct
 
 - [ ] **Step 4: Build to verify it compiles**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
 Expected: BUILD SUCCEEDED.
 
 > If `.is("deleted_at", value: nil)` fails to resolve, fall back to `.filter("deleted_at", operator: "is", value: "null")` — both emit `deleted_at=is.null`.
@@ -249,7 +249,7 @@ Expected: BUILD SUCCEEDED.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Services/AnimalRepository.swift
+git add AgriVision/Services/AnimalRepository.swift
 git commit -m "feat(ios): repository update/softDelete/restore + list excludes deleted"
 ```
 
@@ -258,12 +258,12 @@ git commit -m "feat(ios): repository update/softDelete/restore + list excludes d
 ## Task 4: HerdStore — `updateAnimal`, `removeAnimal`, `restoreAnimal`
 
 **Files:**
-- Modify: `CarniVision/Models/HerdData.swift`
-- Test: `CarniVisionTests/HerdStoreTests.swift`
+- Modify: `AgriVision/Models/HerdData.swift`
+- Test: `AgriVisionTests/HerdStoreTests.swift`
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `CarniVisionTests/HerdStoreTests.swift` (inside `HerdStoreTests`, after `testAddAnimalInsertsOptimisticallyAtTop`):
+Add to `AgriVisionTests/HerdStoreTests.swift` (inside `HerdStoreTests`, after `testAddAnimalInsertsOptimisticallyAtTop`):
 
 ```swift
     func testUpdateAnimalReplacesFieldsInPlace() async {
@@ -313,7 +313,7 @@ Add to `CarniVisionTests/HerdStoreTests.swift` (inside `HerdStoreTests`, after `
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test -only-testing:CarniVisionTests/HerdStoreTests`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test -only-testing:AgriVisionTests/HerdStoreTests`
 Expected: FAIL to compile — `value of type 'HerdStore' has no member 'updateAnimal' / 'removeAnimal' / 'restoreAnimal' / 'recentlyArchived'`.
 
 - [ ] **Step 3: Add the published property and methods**
@@ -367,13 +367,13 @@ Then add these methods to `HerdStore` (after `addAnimal(id:...)`, before `loadEr
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test -only-testing:CarniVisionTests/HerdStoreTests`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test -only-testing:AgriVisionTests/HerdStoreTests`
 Expected: PASS (all HerdStoreTests, including the 3 new ones).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Models/HerdData.swift CarniVisionTests/HerdStoreTests.swift
+git add AgriVision/Models/HerdData.swift AgriVisionTests/HerdStoreTests.swift
 git commit -m "feat(ios): HerdStore update/remove/restore animal with undo state"
 ```
 
@@ -382,7 +382,7 @@ git commit -m "feat(ios): HerdStore update/remove/restore animal with undo state
 ## Task 5: Localization — edit/delete/undo strings (en + tr)
 
 **Files:**
-- Modify: `CarniVision/Models/Localization.swift`
+- Modify: `AgriVision/Models/Localization.swift`
 
 - [ ] **Step 1: Add English strings**
 
@@ -422,13 +422,13 @@ In `Localization.swift`, in the Turkish dictionary, after the `"add.saved"` Turk
 
 - [ ] **Step 3: Build to verify**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Models/Localization.swift
+git add AgriVision/Models/Localization.swift
 git commit -m "feat(ios): add edit/delete/undo strings (en/tr)"
 ```
 
@@ -439,7 +439,7 @@ git commit -m "feat(ios): add edit/delete/undo strings (en/tr)"
 This extracts the shared metadata fields (name, tag, breed, sex, birth date) so Edit and Add render identical inputs. Weight and the muzzle-scan card stay Add-only.
 
 **Files:**
-- Modify: `CarniVision/Views/Main/AddAnimalView.swift`
+- Modify: `AgriVision/Views/Main/AddAnimalView.swift`
 
 - [ ] **Step 1: Add the shared `AnimalDetailsForm` view**
 
@@ -460,7 +460,7 @@ struct AnimalDetailsForm: View {
 
     private var fieldBackground: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(CarniColors.appBackground)
+            .fill(AgriColors.appBackground)
     }
 
     var body: some View {
@@ -470,8 +470,8 @@ struct AnimalDetailsForm: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.breed"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purpleDark)
                 Menu {
                     ForEach(Self.breeds, id: \.self) { option in
                         Button(option) { breed = option }
@@ -479,12 +479,12 @@ struct AnimalDetailsForm: View {
                 } label: {
                     HStack {
                         Text(breed)
-                            .font(CarniFont.regular(15))
-                            .foregroundStyle(CarniColors.purpleDark)
+                            .font(AgriFont.regular(15))
+                            .foregroundStyle(AgriColors.purpleDark)
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CarniColors.tabInactive)
+                            .foregroundStyle(AgriColors.tabInactive)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -494,21 +494,21 @@ struct AnimalDetailsForm: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("detail.sex"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purpleDark)
                 HStack(spacing: 8) {
                     ForEach(AnimalSex.allCases) { option in
                         Button {
                             sex = option
                         } label: {
                             Text(lang.t(option.key))
-                                .font(CarniFont.semibold(14))
-                                .foregroundStyle(sex == option ? .white : CarniColors.purple)
+                                .font(AgriFont.semibold(14))
+                                .foregroundStyle(sex == option ? .white : AgriColors.purple)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 11)
                                 .background(
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(sex == option ? CarniColors.purple : CarniColors.purple.opacity(0.08))
+                                        .fill(sex == option ? AgriColors.purple : AgriColors.purple.opacity(0.08))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -518,12 +518,12 @@ struct AnimalDetailsForm: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.dob"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purpleDark)
                 HStack {
                     DatePicker("", selection: $birthDate, in: ...Date(), displayedComponents: .date)
                         .labelsHidden()
-                        .tint(CarniColors.purple)
+                        .tint(AgriColors.purple)
                         .environment(\.locale, lang.language.locale)
                     Spacer()
                 }
@@ -547,23 +547,23 @@ In `AddAnimalView.swift`, replace the `detailsCard` computed property (lines 110
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.weight"))
-                    .font(CarniFont.semibold(13))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(AgriColors.purpleDark)
                 HStack {
                     TextField(lang.t("add.weightPh"), text: $weightText)
-                        .font(CarniFont.regular(15))
-                        .foregroundStyle(CarniColors.purpleDark)
+                        .font(AgriFont.regular(15))
+                        .foregroundStyle(AgriColors.purpleDark)
                         .keyboardType(.decimalPad)
                     Text("kg")
-                        .font(CarniFont.semibold(14))
-                        .foregroundStyle(CarniColors.tabInactive)
+                        .font(AgriFont.semibold(14))
+                        .foregroundStyle(AgriColors.tabInactive)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(fieldBackground)
             }
         }
-        .carniCard()
+        .agriCard()
     }
 ```
 
@@ -571,13 +571,13 @@ Then delete the now-unused `breeds` constant (line 24) from `AddAnimalScreen` �
 
 - [ ] **Step 3: Build to verify the Add flow still compiles**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Views/Main/AddAnimalView.swift
+git add AgriVision/Views/Main/AddAnimalView.swift
 git commit -m "refactor(ios): extract AnimalDetailsForm shared by Add and Edit"
 ```
 
@@ -586,8 +586,8 @@ git commit -m "refactor(ios): extract AnimalDetailsForm shared by Add and Edit"
 ## Task 7: EditAnimalScreen + Edit button in AnimalDetailView
 
 **Files:**
-- Modify: `CarniVision/Views/Main/AddAnimalView.swift` (add `EditAnimalScreen`)
-- Modify: `CarniVision/Views/Main/AnimalsView.swift` (detail view edit entry)
+- Modify: `AgriVision/Views/Main/AddAnimalView.swift` (add `EditAnimalScreen`)
+- Modify: `AgriVision/Views/Main/AnimalsView.swift` (detail view edit entry)
 
 - [ ] **Step 1: Add `EditAnimalScreen`**
 
@@ -639,32 +639,32 @@ struct EditAnimalScreen: View {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(lang.t("edit.title"))
-                        .font(CarniFont.bold(24))
-                        .foregroundStyle(CarniColors.purpleDark)
+                        .font(AgriFont.bold(24))
+                        .foregroundStyle(AgriColors.purpleDark)
                     Text(lang.t("edit.subtitle"))
-                        .font(CarniFont.regular(13))
-                        .foregroundStyle(CarniColors.tabInactive)
+                        .font(AgriFont.regular(13))
+                        .foregroundStyle(AgriColors.tabInactive)
                 }
 
                 AnimalDetailsForm(name: $name, tag: $tag, breed: $breed, sex: $sex, birthDate: $birthDate)
-                    .carniCard()
+                    .agriCard()
 
                 if let saveError {
                     Text(saveError)
-                        .font(CarniFont.regular(13))
+                        .font(AgriFont.regular(13))
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Button(action: save) {
                     Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("edit.save"))
-                        .font(CarniFont.bold(16))
+                        .font(AgriFont.bold(16))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 15)
                         .background(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(canSave && !isSaving ? CarniColors.purple : CarniColors.purple.opacity(0.35))
+                                .fill(canSave && !isSaving ? AgriColors.purple : AgriColors.purple.opacity(0.35))
                         )
                 }
                 .buttonStyle(.plain)
@@ -672,10 +672,10 @@ struct EditAnimalScreen: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
-            .padding(.bottom, CarniLayout.tabBarClearance)
+            .padding(.bottom, AgriLayout.tabBarClearance)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(CarniColors.appBackground)
+        .background(AgriColors.appBackground)
     }
 
     private func save() {
@@ -739,9 +739,9 @@ struct AnimalDetailView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, CarniLayout.tabBarClearance)
+            .padding(.bottom, AgriLayout.tabBarClearance)
         }
-        .background(CarniColors.appBackground)
+        .background(AgriColors.appBackground)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showEdit) {
             EditAnimalScreen(animal: animal) { name, tag, breed, sex, birthDate in
@@ -762,30 +762,30 @@ struct AnimalDetailView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(CarniColors.purpleDark)
+                    .foregroundStyle(AgriColors.purpleDark)
                     .frame(width: 38, height: 38)
                     .background(
                         Circle()
                             .fill(Color.white)
-                            .shadow(color: CarniColors.purpleDark.opacity(0.08), radius: 8, y: 3)
+                            .shadow(color: AgriColors.purpleDark.opacity(0.08), radius: 8, y: 3)
                     )
             }
             .buttonStyle(.plain)
             Spacer()
             Text(lang.t("detail.title"))
-                .font(CarniFont.semibold(16))
-                .foregroundStyle(CarniColors.purpleDark)
+                .font(AgriFont.semibold(16))
+                .foregroundStyle(AgriColors.purpleDark)
             Spacer()
             Button {
                 showEdit = true
             } label: {
                 Text(lang.t("detail.edit"))
-                    .font(CarniFont.semibold(14))
-                    .foregroundStyle(CarniColors.purple)
+                    .font(AgriFont.semibold(14))
+                    .foregroundStyle(AgriColors.purple)
                     .frame(height: 38)
                     .padding(.horizontal, 12)
                     .background(
-                        Capsule().fill(CarniColors.purple.opacity(0.1))
+                        Capsule().fill(AgriColors.purple.opacity(0.1))
                     )
             }
             .buttonStyle(.plain)
@@ -797,13 +797,13 @@ struct AnimalDetailView: View {
 
 - [ ] **Step 3: Build to verify**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add CarniVision/Views/Main/AddAnimalView.swift CarniVision/Views/Main/AnimalsView.swift
+git add AgriVision/Views/Main/AddAnimalView.swift AgriVision/Views/Main/AnimalsView.swift
 git commit -m "feat(ios): edit animal screen + edit entry in detail view"
 ```
 
@@ -812,7 +812,7 @@ git commit -m "feat(ios): edit animal screen + edit entry in detail view"
 ## Task 8: Delete button, swipe-to-delete, and undo toast
 
 **Files:**
-- Modify: `CarniVision/Views/Main/AnimalsView.swift`
+- Modify: `AgriVision/Views/Main/AnimalsView.swift`
 
 - [ ] **Step 1: Add the `UndoToast` component**
 
@@ -828,21 +828,21 @@ struct UndoToast: View {
     var body: some View {
         HStack(spacing: 14) {
             Text(message)
-                .font(CarniFont.semibold(14))
+                .font(AgriFont.semibold(14))
                 .foregroundStyle(.white)
             Spacer(minLength: 8)
             Button(action: onUndo) {
                 Text(actionTitle)
-                    .font(CarniFont.bold(14))
-                    .foregroundStyle(CarniColors.purple)
+                    .font(AgriFont.bold(14))
+                    .foregroundStyle(AgriColors.purple)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .background(
-            Capsule().fill(CarniColors.purpleDark)
-                .shadow(color: CarniColors.purpleDark.opacity(0.35), radius: 10, y: 4)
+            Capsule().fill(AgriColors.purpleDark)
+                .shadow(color: AgriColors.purpleDark.opacity(0.35), radius: 10, y: 4)
         )
         .padding(.horizontal, 20)
         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -866,7 +866,7 @@ Add a Delete button at the bottom of the detail `VStack` — insert after `infoG
                     showDeleteConfirm = true
                 } label: {
                     Label(lang.t("detail.delete"), systemImage: "trash")
-                        .font(CarniFont.semibold(15))
+                        .font(AgriFont.semibold(15))
                         .foregroundStyle(Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -980,7 +980,7 @@ Add the toast overlay. Change the outer `NavigationStack { ScrollView { ... } ..
                         actionTitle: lang.t("undo.action"),
                         onUndo: { undoArchive(archived) }
                     )
-                    .padding(.bottom, CarniLayout.tabBarClearance)
+                    .padding(.bottom, AgriLayout.tabBarClearance)
                     .task(id: archived.id) {
                         // Auto-dismiss after ~4s unless undone/replaced.
                         try? await Task.sleep(nanoseconds: 4_000_000_000)
@@ -995,13 +995,13 @@ Add the toast overlay. Change the outer `NavigationStack { ScrollView { ... } ..
 
 - [ ] **Step 4: Build to verify**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CarniVision/Views/Main/AnimalsView.swift
+git add AgriVision/Views/Main/AnimalsView.swift
 git commit -m "feat(ios): soft-delete animal with confirmation, context-menu, and undo toast"
 ```
 
@@ -1013,7 +1013,7 @@ git commit -m "feat(ios): soft-delete animal with confirmation, context-menu, an
 
 - [ ] **Step 1: Run the full iOS test suite**
 
-Run: `xcodebuild -project CarniVision.xcodeproj -scheme CarniVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test`
+Run: `xcodebuild -project AgriVision.xcodeproj -scheme AgriVision -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test`
 Expected: TEST SUCCEEDED — all suites green (HerdStoreTests now has the 3 new cases).
 
 - [ ] **Step 2: Run the server fast suite**

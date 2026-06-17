@@ -1,4 +1,4 @@
--- CarniVision embedder schema. Apply once in the Supabase SQL editor.
+-- AgriVision embedder schema. Apply once in the Supabase SQL editor.
 create extension if not exists vector;
 
 create table if not exists animals (

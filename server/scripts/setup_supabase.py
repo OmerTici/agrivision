@@ -1,4 +1,4 @@
-"""One-time Supabase setup for the CarniVision embedder.
+"""One-time Supabase setup for the AgriVision embedder.
 
 Run from server/:  .venv/bin/python scripts/setup_supabase.py
 

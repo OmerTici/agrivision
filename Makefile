@@ -1,4 +1,4 @@
-# CarniVision — most-repeated dev commands.
+# AgriVision — most-repeated dev commands.
 # Server targets run inside server/ (need server/.venv and server/.env).
 # iOS targets need Xcode with the iPhone 17 Pro simulator installed.
 
@@ -29,15 +29,15 @@ setup-db: ## Apply schema + verify bucket/policies/test user (uses server/.env)
 # ---- iOS app ----
 
 ios-build: ## Debug build for the simulator
-	xcodebuild -project CarniVision.xcodeproj -scheme CarniVision \
+	xcodebuild -project AgriVision.xcodeproj -scheme AgriVision \
 	  -destination '$(SIM_DEST)' build
 
 ios-test: ## Run the iOS test suite on the simulator
-	xcodebuild -project CarniVision.xcodeproj -scheme CarniVision \
+	xcodebuild -project AgriVision.xcodeproj -scheme AgriVision \
 	  -destination '$(SIM_DEST)' test
 
 ios-release: ## Release-configuration build (catches release-only errors)
-	xcodebuild -project CarniVision.xcodeproj -scheme CarniVision \
+	xcodebuild -project AgriVision.xcodeproj -scheme AgriVision \
 	  -configuration Release -destination '$(SIM_DEST)' build
 
 # ---- Cloud Run deploy (override tag: make deploy TAG=events) ----
