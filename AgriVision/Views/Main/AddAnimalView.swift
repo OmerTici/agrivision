@@ -4,6 +4,9 @@ struct AddAnimalScreen: View {
     @EnvironmentObject private var store: HerdStore
     @EnvironmentObject private var auth: AuthService
     @ObservedObject private var lang = LanguageManager.shared
+    /// Switches to the My Herd (Animals) tab. Mirrors the Animals header's
+    /// quick-jump button, in reverse.
+    var onOpenHerd: () -> Void = {}
 
     private let repository = AnimalRepository()
 
@@ -59,13 +62,29 @@ struct AddAnimalScreen: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(lang.t("add.title"))
-                .font(AgriFont.bold(24))
-                .foregroundStyle(AgriColors.purpleDark)
-            Text(lang.t("add.subtitle"))
-                .font(AgriFont.regular(13))
-                .foregroundStyle(AgriColors.tabInactive)
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(lang.t("add.title"))
+                    .font(AgriFont.bold(24))
+                    .foregroundStyle(AgriColors.purpleDark)
+                Text(lang.t("add.subtitle"))
+                    .font(AgriFont.regular(13))
+                    .foregroundStyle(AgriColors.tabInactive)
+            }
+            Spacer()
+            Button {
+                onOpenHerd()
+            } label: {
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AgriColors.purple)
+                    )
+            }
+            .buttonStyle(.plain)
         }
     }
 

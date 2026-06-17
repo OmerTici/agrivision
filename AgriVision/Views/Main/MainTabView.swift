@@ -6,8 +6,6 @@ struct MainTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var lang = LanguageManager.shared
     @State private var selected: AppTab = .home
-    @State private var showAddAnimal = false
-    @State private var showSettings = false
     @StateObject private var store = HerdStore()
 
     var body: some View {
@@ -41,13 +39,6 @@ struct MainTabView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await recognition.warmUp() } }
         }
-        .sheet(isPresented: $showSettings) {
-            // Sheets present in a detached context; re-inject the objects
-            // Settings depends on so they survive the presentation boundary.
-            SettingsScreen(onClose: { showSettings = false })
-                .environmentObject(auth)
-                .environmentObject(store)
-        }
     }
 
     @ViewBuilder
@@ -56,19 +47,22 @@ struct MainTabView: View {
         case .home:
             HomeScreen(
                 onSeeAllAnimals: { selected = .animals },
-                onOpenSettings: { showSettings = true }
+                onOpenSettings: { selected = .settings }
             )
         case .animals:
-            AnimalsScreen(showAddAnimal: $showAddAnimal)
+            AnimalsScreen(onAddAnimal: { selected = .addAnimal })
         case .camera:
             CameraScreen(
                 onClose: { selected = .home },
                 onRequestEnroll: {
                     // Unknown identify -> offer enrollment via the Add form.
-                    selected = .animals
-                    showAddAnimal = true
+                    selected = .addAnimal
                 }
             )
+        case .addAnimal:
+            AddAnimalScreen(onOpenHerd: { selected = .animals })
+        case .settings:
+            SettingsScreen()
         }
     }
 }

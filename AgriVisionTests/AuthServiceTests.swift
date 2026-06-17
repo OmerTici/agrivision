@@ -4,7 +4,7 @@ import XCTest
 /// Stub backend so AuthService transitions can be tested without network.
 final class StubAuthBackend: AuthBackend {
     var signInResult: Result<AuthIdentity, Error> = .failure(NSError(domain: "stub", code: 0))
-    var signUpResult: Result<AuthIdentity, Error> = .failure(NSError(domain: "stub", code: 0))
+    var signUpResult: Result<SignUpOutcome, Error> = .failure(NSError(domain: "stub", code: 0))
     var signOutError: Error?
     var updateEmailError: Error?
     var reauthenticateError: Error?
@@ -16,7 +16,7 @@ final class StubAuthBackend: AuthBackend {
     func signIn(email: String, password: String) async throws -> AuthIdentity {
         try signInResult.get()
     }
-    func signUp(email: String, password: String) async throws -> AuthIdentity {
+    func signUp(email: String, password: String) async throws -> SignUpOutcome {
         try signUpResult.get()
     }
     func signOut() async throws {

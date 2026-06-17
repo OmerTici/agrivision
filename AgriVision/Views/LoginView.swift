@@ -3,6 +3,7 @@ import SwiftUI
 struct SignInForm: View {
     var onBack: () -> Void
     var onSwitchToSignUp: () -> Void
+    var presentStatus: (AuthStatusContent) -> Void
 
     @EnvironmentObject private var auth: AuthService
     @ObservedObject private var lang = LanguageManager.shared
@@ -60,13 +61,6 @@ struct SignInForm: View {
                         }
                     }
 
-                    if let error = auth.errorMessage {
-                        Text(error)
-                            .font(AgriFont.regular(13))
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
                     PrimaryAuthButton(
                         title: auth.isWorking ? lang.t("auth.signingIn") : lang.t("auth.login")
                     ) {
@@ -96,10 +90,14 @@ struct SignInForm: View {
 
     private func handleLogin() {
         Task {
-            await auth.signIn(
+            let result = await auth.signIn(
                 email: email.trimmingCharacters(in: .whitespaces),
                 password: password
             )
+            if case .failed(let kind) = result {
+                presentStatus(AuthStatusContent.failure(kind, lang: lang))
+            }
+            // On success, identity is set and RootView swaps to the main app.
         }
     }
 }

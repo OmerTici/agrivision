@@ -10,6 +10,7 @@ enum AgriColors {
     static let mutedText = Color.white.opacity(0.78)
 
     static let successGreen = Color(red: 52 / 255, green: 168 / 255, blue: 110 / 255)
+    static let errorRed = Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255)
     static let appBackground = Color(red: 247 / 255, green: 245 / 255, blue: 250 / 255)
     static let tabBar = Color.white
     static let tabInactive = Color(red: 150 / 255, green: 150 / 255, blue: 160 / 255)

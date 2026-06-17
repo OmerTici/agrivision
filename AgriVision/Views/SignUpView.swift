@@ -3,6 +3,7 @@ import SwiftUI
 struct SignUpForm: View {
     var onBack: () -> Void
     var onSwitchToSignIn: () -> Void
+    var presentStatus: (AuthStatusContent) -> Void
 
     @EnvironmentObject private var auth: AuthService
     @ObservedObject private var lang = LanguageManager.shared
@@ -77,13 +78,6 @@ struct SignUpForm: View {
                             )
                         }
 
-                        if let error = auth.errorMessage {
-                            Text(error)
-                                .font(AgriFont.regular(13))
-                                .foregroundStyle(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
                         PrimaryAuthButton(
                             title: auth.isWorking ? lang.t("auth.signingUp") : lang.t("auth.signupAction"),
                             compact: true,
@@ -115,14 +109,37 @@ struct SignUpForm: View {
 
     private func handleSignUp() {
         guard password == confirmPassword else {
-            auth.errorMessage = lang.t("auth.mismatch")
+            presentStatus(AuthStatusContent(
+                kind: .error,
+                title: lang.t("auth.popup.signupFailed.title"),
+                message: lang.t("auth.mismatch"),
+                autoDismiss: nil
+            ))
             return
         }
         Task {
-            await auth.signUp(
+            let result = await auth.signUp(
                 email: email.trimmingCharacters(in: .whitespaces),
                 password: password
             )
+            switch result {
+            case .signedIn:
+                // Identity is set; RootView swaps to the main app automatically.
+                break
+            case .confirmationSent:
+                presentStatus(AuthStatusContent(
+                    kind: .success,
+                    title: lang.t("auth.popup.emailSent.title"),
+                    message: lang.t("auth.popup.emailSent.message"),
+                    autoDismiss: 2.2,
+                    onDismiss: onSwitchToSignIn
+                ))
+            case .failed(let kind):
+                let titleKey = kind == .generic ? "auth.popup.signupFailed.title" : nil
+                var content = AuthStatusContent.failure(kind, lang: lang)
+                if let titleKey { content.title = lang.t(titleKey) }
+                presentStatus(content)
+            }
         }
     }
 }

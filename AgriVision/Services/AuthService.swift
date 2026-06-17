@@ -8,10 +8,39 @@ struct AuthIdentity: Equatable {
     let accessToken: String
 }
 
+/// Result of a sign-up attempt. Projects with email confirmation enabled
+/// return no session until the user confirms, so the two cases must be
+/// distinguished: `.signedIn` lands the user in the app, `.confirmationRequired`
+/// drives the "check your email" success popup.
+enum SignUpOutcome: Equatable {
+    case signedIn(AuthIdentity)
+    case confirmationRequired
+}
+
+/// Why an auth call failed, so the UI can show a targeted message/animation.
+enum AuthErrorKind {
+    case invalidCredentials
+    case notActivated
+    case generic
+}
+
+/// View-facing result of `AuthService.signIn`.
+enum SignInResult {
+    case signedIn
+    case failed(AuthErrorKind)
+}
+
+/// View-facing result of `AuthService.signUp`.
+enum SignUpResult {
+    case signedIn
+    case confirmationSent
+    case failed(AuthErrorKind)
+}
+
 /// Seam that lets tests substitute the Supabase auth client.
 protocol AuthBackend {
     func signIn(email: String, password: String) async throws -> AuthIdentity
-    func signUp(email: String, password: String) async throws -> AuthIdentity
+    func signUp(email: String, password: String) async throws -> SignUpOutcome
     func signOut() async throws
     /// Updates the signed-in user's email. Projects with email confirmation
     /// enabled send a verification link and defer the change until confirmed.
@@ -57,15 +86,13 @@ struct SupabaseAuthBackend: AuthBackend {
         return identity(from: session)
     }
 
-    func signUp(email: String, password: String) async throws -> AuthIdentity {
+    func signUp(email: String, password: String) async throws -> SignUpOutcome {
         let response = try await client.auth.signUp(email: email, password: password)
         guard let session = response.session else {
             // Email-confirmation projects return no session until confirmed.
-            throw NSError(domain: "auth", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: LanguageManager.shared.t("auth.confirmEmail")
-            ])
+            return .confirmationRequired
         }
-        return AuthIdentity(userID: session.user.id.uuidString, accessToken: session.accessToken)
+        return .signedIn(identity(from: session))
     }
 
     func signOut() async throws {
@@ -176,26 +203,55 @@ final class AuthService: ObservableObject {
         }
     }
 
-    func signIn(email: String, password: String) async {
+    @discardableResult
+    func signIn(email: String, password: String) async -> SignInResult {
         errorMessage = nil
         isWorking = true
         defer { isWorking = false }
         do {
             identity = try await backend.signIn(email: email, password: password)
+            return .signedIn
         } catch {
             errorMessage = error.localizedDescription
+            return .failed(Self.classify(error))
         }
     }
 
-    func signUp(email: String, password: String) async {
+    @discardableResult
+    func signUp(email: String, password: String) async -> SignUpResult {
         errorMessage = nil
         isWorking = true
         defer { isWorking = false }
         do {
-            identity = try await backend.signUp(email: email, password: password)
+            switch try await backend.signUp(email: email, password: password) {
+            case .signedIn(let id):
+                identity = id
+                return .signedIn
+            case .confirmationRequired:
+                return .confirmationSent
+            }
         } catch {
             errorMessage = error.localizedDescription
+            return .failed(Self.classify(error))
         }
+    }
+
+    /// Maps a backend error to a UI-facing kind. Supabase reports an
+    /// unconfirmed account as "Email not confirmed" and bad credentials as
+    /// "Invalid login credentials"; match on the message so the right popup
+    /// (red X + tailored text) is shown.
+    static func classify(_ error: Error) -> AuthErrorKind {
+        let text = "\(error) \(error.localizedDescription)".lowercased()
+        if text.contains("not confirmed") || text.contains("email_not_confirmed")
+            || text.contains("not activated") || text.contains("not verified") {
+            return .notActivated
+        }
+        if text.contains("invalid login credentials") || text.contains("invalid_credentials")
+            || text.contains("invalid credentials") || text.contains("bad credentials")
+            || text.contains("invalid email or password") {
+            return .invalidCredentials
+        }
+        return .generic
     }
 
     func signOut() async {

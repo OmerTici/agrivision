@@ -5,7 +5,8 @@ import SwiftUI
 struct AnimalsScreen: View {
     @EnvironmentObject private var store: HerdStore
     @ObservedObject private var lang = LanguageManager.shared
-    @Binding var showAddAnimal: Bool
+    /// Switches to the full-screen Add Animal tab (not a sheet).
+    var onAddAnimal: () -> Void
     @State private var searchText = ""
     @State private var filter: SexFilter = .all
     private let repository = AnimalRepository()
@@ -90,9 +91,6 @@ struct AnimalsScreen: View {
             .refreshable { await store.load() }
             .background(AgriColors.appBackground)
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showAddAnimal) {
-                AddAnimalScreen()
-            }
             .overlay(alignment: .bottom) {
                 if let archived = store.recentlyArchived {
                     UndoToast(
@@ -148,7 +146,7 @@ struct AnimalsScreen: View {
             }
             Spacer()
             Button {
-                showAddAnimal = true
+                onAddAnimal()
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .semibold))

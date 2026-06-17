@@ -327,3 +327,168 @@ struct AuthFooterPrompt: View {
         .font(AgriFont.regular(compact ? 13 : 15))
     }
 }
+
+// MARK: - Status popup (success check / error X)
+
+/// Describes an outcome popup shown over an auth screen.
+struct AuthStatusContent: Identifiable {
+    enum Kind { case success, error }
+
+    let id = UUID()
+    let kind: Kind
+    var title: String
+    var message: String
+    /// Seconds before the popup dismisses itself. `nil` keeps it up until the
+    /// user taps "OK" — used for errors so the message can be read.
+    var autoDismiss: TimeInterval?
+    /// Runs after the popup leaves (e.g. navigate to the sign-in screen).
+    var onDismiss: () -> Void = {}
+
+    /// Builds the red-X error popup matching a backend failure.
+    static func failure(_ kind: AuthErrorKind, lang: LanguageManager) -> AuthStatusContent {
+        let titleKey: String
+        let messageKey: String
+        switch kind {
+        case .invalidCredentials:
+            titleKey = "auth.popup.invalid.title"
+            messageKey = "auth.popup.invalid.message"
+        case .notActivated:
+            titleKey = "auth.popup.notActivated.title"
+            messageKey = "auth.popup.notActivated.message"
+        case .generic:
+            titleKey = "auth.popup.error.title"
+            messageKey = "auth.error.generic"
+        }
+        return AuthStatusContent(
+            kind: .error,
+            title: lang.t(titleKey),
+            message: lang.t(messageKey),
+            autoDismiss: nil
+        )
+    }
+}
+
+/// Dimmed modal with an animated check or X, a title, and a message. Hosted by
+/// the auth container so success can drive navigation via `content.onDismiss`.
+struct AuthStatusOverlay: View {
+    let content: AuthStatusContent
+    let dismiss: () -> Void
+
+    @ObservedObject private var lang = LanguageManager.shared
+    @State private var iconProgress: CGFloat = 0
+    @State private var cardVisible = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture(perform: dismiss)
+
+            VStack(spacing: 16) {
+                AnimatedStatusIcon(kind: content.kind, progress: iconProgress)
+                    .frame(width: 84, height: 84)
+
+                Text(content.title)
+                    .font(AgriFont.semibold(19))
+                    .foregroundStyle(AgriColors.purpleDark)
+                    .multilineTextAlignment(.center)
+
+                Text(content.message)
+                    .font(AgriFont.regular(14))
+                    .foregroundStyle(AgriColors.purpleDark.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if content.autoDismiss == nil {
+                    Button(action: dismiss) {
+                        Text(lang.t("common.ok"))
+                            .font(AgriFont.semibold(16))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .foregroundStyle(AgriColors.white)
+                            .background(AgriColors.purple)
+                            .clipShape(RoundedRectangle(cornerRadius: AgriLayout.buttonCornerRadius))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 320)
+            .background(AgriColors.white)
+            .clipShape(RoundedRectangle(cornerRadius: 24))
+            .shadow(color: .black.opacity(0.25), radius: 24, y: 10)
+            .padding(.horizontal, 40)
+            .scaleEffect(cardVisible ? 1 : 0.85)
+            .opacity(cardVisible ? 1 : 0)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                cardVisible = true
+            }
+            withAnimation(.easeOut(duration: 0.45).delay(0.15)) {
+                iconProgress = 1
+            }
+            if let delay = content.autoDismiss {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: dismiss)
+            }
+        }
+    }
+}
+
+/// Circle backdrop plus a stroke (check or X) that draws in via `progress`.
+private struct AnimatedStatusIcon: View {
+    let kind: AuthStatusContent.Kind
+    let progress: CGFloat
+
+    private var color: Color {
+        kind == .success ? AgriColors.successGreen : AgriColors.errorRed
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color.opacity(0.14))
+            Circle()
+                .stroke(color.opacity(0.45), lineWidth: 2)
+
+            Group {
+                if kind == .success {
+                    CheckmarkShape()
+                        .trim(from: 0, to: progress)
+                        .stroke(color, style: strokeStyle)
+                } else {
+                    CrossShape()
+                        .trim(from: 0, to: progress)
+                        .stroke(color, style: strokeStyle)
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    private var strokeStyle: StrokeStyle {
+        StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
+    }
+}
+
+private struct CheckmarkShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.width * 0.4, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        return path
+    }
+}
+
+private struct CrossShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        return path
+    }
+}

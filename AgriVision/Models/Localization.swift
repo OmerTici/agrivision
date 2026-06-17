@@ -150,6 +150,7 @@ final class LanguageManager: ObservableObject {
             "delete.confirmBody": "It will be archived and removed from your herd. You can undo this right after.",
             "delete.confirm": "Delete",
             "common.cancel": "Cancel",
+            "common.ok": "OK",
             "undo.archived": "Animal archived",
             "undo.action": "Undo",
 
@@ -272,6 +273,14 @@ final class LanguageManager: ObservableObject {
             "auth.signingUp": "Creating account…",
             "auth.mismatch": "Passwords do not match.",
             "auth.confirmEmail": "Check your email to confirm your account.",
+            "auth.popup.emailSent.title": "Check your email",
+            "auth.popup.emailSent.message": "We've sent a confirmation link to your email. Confirm it, then sign in.",
+            "auth.popup.invalid.title": "Sign in failed",
+            "auth.popup.invalid.message": "The email, phone number, or password is incorrect.",
+            "auth.popup.notActivated.title": "Account not activated",
+            "auth.popup.notActivated.message": "Confirm your account from the email we sent you, then sign in.",
+            "auth.popup.error.title": "Something went wrong",
+            "auth.popup.signupFailed.title": "Sign up failed",
         ],
         .turkish: [
             // Home
@@ -367,6 +376,7 @@ final class LanguageManager: ObservableObject {
             "delete.confirmBody": "Arşivlenip sürünüzden kaldırılacak. Hemen ardından geri alabilirsiniz.",
             "delete.confirm": "Sil",
             "common.cancel": "İptal",
+            "common.ok": "Tamam",
             "undo.archived": "Hayvan arşivlendi",
             "undo.action": "Geri al",
 
@@ -489,6 +499,14 @@ final class LanguageManager: ObservableObject {
             "auth.signingUp": "Hesap oluşturuluyor…",
             "auth.mismatch": "Şifreler eşleşmiyor.",
             "auth.confirmEmail": "Hesabınızı onaylamak için e-postanızı kontrol edin.",
+            "auth.popup.emailSent.title": "E-postanızı kontrol edin",
+            "auth.popup.emailSent.message": "E-postanıza bir onay bağlantısı gönderdik. Onayladıktan sonra giriş yapın.",
+            "auth.popup.invalid.title": "Giriş başarısız",
+            "auth.popup.invalid.message": "E-posta, telefon numarası veya şifre hatalı.",
+            "auth.popup.notActivated.title": "Hesap etkinleştirilmedi",
+            "auth.popup.notActivated.message": "Size gönderdiğimiz e-postadan hesabınızı onaylayın, ardından giriş yapın.",
+            "auth.popup.error.title": "Bir şeyler ters gitti",
+            "auth.popup.signupFailed.title": "Kayıt başarısız",
         ],
     ]
 }

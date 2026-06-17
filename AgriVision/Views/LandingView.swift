@@ -9,6 +9,7 @@ struct LandingView: View {
 
     @ObservedObject private var lang = LanguageManager.shared
     @State private var screen: Screen = .landing
+    @State private var status: AuthStatusContent?
 
     private var transitionAnimation: Animation {
         .easeInOut(duration: 0.4)
@@ -27,7 +28,8 @@ struct LandingView: View {
             if screen == .signIn {
                 SignInForm(
                     onBack: { goTo(.landing) },
-                    onSwitchToSignUp: { goTo(.signUp) }
+                    onSwitchToSignUp: { goTo(.signUp) },
+                    presentStatus: presentStatus
                 )
                 .transition(.move(edge: .bottom))
             }
@@ -35,10 +37,27 @@ struct LandingView: View {
             if screen == .signUp {
                 SignUpForm(
                     onBack: { goTo(.landing) },
-                    onSwitchToSignIn: { goTo(.signIn) }
+                    onSwitchToSignIn: { goTo(.signIn) },
+                    presentStatus: presentStatus
                 )
                 .transition(.move(edge: .bottom))
             }
+
+            if let status {
+                AuthStatusOverlay(content: status) {
+                    let onDismiss = status.onDismiss
+                    withAnimation(.easeInOut(duration: 0.2)) { self.status = nil }
+                    onDismiss()
+                }
+                .transition(.opacity)
+                .zIndex(1)
+            }
+        }
+    }
+
+    private func presentStatus(_ content: AuthStatusContent) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            status = content
         }
     }
 
