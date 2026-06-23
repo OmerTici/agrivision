@@ -152,6 +152,7 @@ struct HomeScreen: View {
                 .padding(.bottom, AgriLayout.tabBarClearance)
             }
             .refreshable { await store.load() }
+            .background(AgriColors.appBackground)
             .toolbar(.hidden, for: .navigationBar)
         }
     }
