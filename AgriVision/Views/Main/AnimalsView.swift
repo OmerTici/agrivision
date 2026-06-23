@@ -457,26 +457,29 @@ struct AnimalPhotosGallery: View {
     @State private var loaded = false
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(paths.isEmpty ? lang.t("detail.photos") : "\(lang.t("detail.photos"))  \(paths.count)")
+                .font(AgriFont.semibold(15))
+                .foregroundStyle(AgriColors.purpleDark)
+
             if !paths.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("\(lang.t("detail.photos"))  \(paths.count)")
-                        .font(AgriFont.semibold(15))
-                        .foregroundStyle(AgriColors.purpleDark)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(paths, id: \.self) { path in
-                                thumbnail(path)
-                            }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(paths, id: \.self) { path in
+                            thumbnail(path)
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .agriCard()
             } else if loaded {
-                EmptyView()
+                Text(lang.t("detail.photosEmpty"))
+                    .font(AgriFont.regular(13))
+                    .foregroundStyle(AgriColors.tabInactive)
+            } else {
+                ProgressView().tint(AgriColors.purple)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .agriCard()
         .task(id: animalID) { await load() }
     }
 
