@@ -694,26 +694,32 @@ struct EditAnimalScreen: View {
     /// Called after a successful save with the new field values so the detail
     /// view can update its locally displayed copy.
     let onSaved: (_ name: String, _ tag: String, _ breed: String, _ sex: AnimalSex, _ birthDate: Date) -> Void
+    /// Called when the profile photo changes so the detail view's avatar updates.
+    let onProfileChanged: (_ path: String) -> Void
 
     @State private var name: String
     @State private var tag: String
     @State private var breed: String
     @State private var sex: AnimalSex
     @State private var birthDate: Date
+    @State private var profilePath: String?
     @State private var isSaving = false
     @State private var saveError: String?
 
     init(
         animal: Animal,
-        onSaved: @escaping (_ name: String, _ tag: String, _ breed: String, _ sex: AnimalSex, _ birthDate: Date) -> Void
+        onSaved: @escaping (_ name: String, _ tag: String, _ breed: String, _ sex: AnimalSex, _ birthDate: Date) -> Void,
+        onProfileChanged: @escaping (_ path: String) -> Void = { _ in }
     ) {
         self.animalID = animal.id
         self.onSaved = onSaved
+        self.onProfileChanged = onProfileChanged
         _name = State(initialValue: animal.name)
         _tag = State(initialValue: animal.tag)
         _breed = State(initialValue: animal.breed)
         _sex = State(initialValue: animal.sex)
         _birthDate = State(initialValue: animal.birthDate ?? Date())
+        _profilePath = State(initialValue: animal.profilePath)
     }
 
     private var canSave: Bool {
@@ -735,6 +741,12 @@ struct EditAnimalScreen: View {
 
                 AnimalDetailsForm(name: $name, tag: $tag, breed: $breed, sex: $sex, birthDate: $birthDate)
                     .agriCard()
+
+                AnimalPhotosGallery(
+                    animalID: animalID,
+                    profilePath: profilePath,
+                    onSelectProfile: selectProfile
+                )
 
                 if let saveError {
                     Text(saveError)
@@ -763,6 +775,18 @@ struct EditAnimalScreen: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(AgriColors.appBackground)
+    }
+
+    /// Persists a newly chosen profile photo: optimistic local + store update and
+    /// avatar cache invalidation, then the server PATCH.
+    private func selectProfile(_ path: String) {
+        profilePath = path
+        store.setProfilePath(id: animalID, path: path)
+        onProfileChanged(path)
+        if let ownerID = SupabaseClientProvider.shared.auth.currentSession?.user.id.uuidString {
+            AnimalPhotoLoader.shared.invalidateAvatar(ownerID: ownerID, animalID: animalID.uuidString)
+        }
+        Task { try? await repository.setProfilePath(animalID: animalID.uuidString, path: path) }
     }
 
     private func save() {

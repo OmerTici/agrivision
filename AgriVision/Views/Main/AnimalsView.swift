@@ -306,8 +306,7 @@ struct AnimalDetailView: View {
                 infoGrid
                 AnimalPhotosGallery(
                     animalID: animal.id,
-                    profilePath: animal.profilePath,
-                    onSelectProfile: selectProfile
+                    profilePath: animal.profilePath
                 )
                 Button(role: .destructive) {
                     showDeleteConfirm = true
@@ -332,13 +331,17 @@ struct AnimalDetailView: View {
         .background(AgriColors.appBackground)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showEdit) {
-            EditAnimalScreen(animal: animal) { name, tag, breed, sex, birthDate in
-                animal.name = name
-                animal.tag = tag
-                animal.breed = breed
-                animal.sex = sex
-                animal.birthDate = birthDate
-            }
+            EditAnimalScreen(
+                animal: animal,
+                onSaved: { name, tag, breed, sex, birthDate in
+                    animal.name = name
+                    animal.tag = tag
+                    animal.breed = breed
+                    animal.sex = sex
+                    animal.birthDate = birthDate
+                },
+                onProfileChanged: { path in animal.profilePath = path }
+            )
             .environmentObject(store)
         }
         .confirmationDialog(
@@ -351,17 +354,6 @@ struct AnimalDetailView: View {
         } message: {
             Text(lang.t("delete.confirmBody"))
         }
-    }
-
-    /// Persists a newly chosen profile photo: optimistic local update + cache
-    /// invalidation so the avatar refreshes, then the server PATCH.
-    private func selectProfile(_ path: String) {
-        animal.profilePath = path
-        store.setProfilePath(id: animal.id, path: path)
-        if let ownerID = SupabaseClientProvider.shared.auth.currentSession?.user.id.uuidString {
-            AnimalPhotoLoader.shared.invalidateAvatar(ownerID: ownerID, animalID: animal.id.uuidString)
-        }
-        Task { try? await repository.setProfilePath(animalID: animal.id.uuidString, path: path) }
     }
 
     private func performDelete() {
@@ -465,19 +457,23 @@ struct AnimalDetailView: View {
 
 /// Horizontal gallery of an animal's quality-of-life photos (profile + cow body
 /// shots) from the private storage bucket. Muzzle crops are excluded. Tapping a
-/// photo sets it as the animal's profile picture.
+/// photo opens it full-screen (pinch to zoom). When `onSelectProfile` is set
+/// (Edit), the zoom viewer can also set that photo as the profile picture.
 struct AnimalPhotosGallery: View {
     let animalID: UUID
     /// The animal's current profile path; the matching thumbnail is badged.
     let profilePath: String?
-    /// Called when the user picks a new profile photo (storage object path).
-    let onSelectProfile: (String) -> Void
+    /// Set (Edit mode) to allow choosing a profile photo from the zoom viewer.
+    var onSelectProfile: ((String) -> Void)? = nil
 
     @ObservedObject private var lang = LanguageManager.shared
     @State private var paths: [String] = []
     @State private var images: [String: UIImage] = [:]
     @State private var selected: String?
+    @State private var zoomPath: String?
     @State private var loaded = false
+
+    private var canSetProfile: Bool { onSelectProfile != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -493,7 +489,7 @@ struct AnimalPhotosGallery: View {
                         }
                     }
                 }
-                Text(lang.t("detail.photosTapHint"))
+                Text(lang.t(canSetProfile ? "detail.photosTapHintEdit" : "detail.photosTapHint"))
                     .font(AgriFont.regular(12))
                     .foregroundStyle(AgriColors.tabInactive)
             } else if loaded {
@@ -507,14 +503,26 @@ struct AnimalPhotosGallery: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .agriCard()
         .task(id: animalID) { await load() }
+        .fullScreenCover(item: $zoomPath) { path in
+            PhotoZoomViewer(
+                image: images[path],
+                isCurrentProfile: selected == path,
+                canSetProfile: canSetProfile,
+                onSetProfile: {
+                    selected = path
+                    onSelectProfile?(path)
+                    zoomPath = nil
+                },
+                onClose: { zoomPath = nil }
+            )
+        }
     }
 
     @ViewBuilder
     private func thumbnail(_ path: String) -> some View {
         let isProfile = selected == path
         Button {
-            selected = path
-            onSelectProfile(path)
+            zoomPath = path
         } label: {
             ZStack(alignment: .topTrailing) {
                 ZStack {
@@ -562,9 +570,87 @@ struct AnimalPhotosGallery: View {
         )
         await MainActor.run {
             paths = result
-            // Default the badge to the saved profile, else the first photo.
+            // Badge the saved profile, else the first photo.
             selected = profilePath ?? result.first
             loaded = true
+        }
+    }
+}
+
+/// Full-screen image viewer with pinch + double-tap zoom. In Edit mode it also
+/// offers a "Set as profile" action.
+private struct PhotoZoomViewer: View {
+    let image: UIImage?
+    let isCurrentProfile: Bool
+    let canSetProfile: Bool
+    let onSetProfile: () -> Void
+    let onClose: () -> Void
+
+    @ObservedObject private var lang = LanguageManager.shared
+    @State private var scale: CGFloat = 1
+    @GestureState private var pinch: CGFloat = 1
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .scaleEffect(scale * pinch)
+                    .gesture(
+                        MagnificationGesture()
+                            .updating($pinch) { value, state, _ in state = value }
+                            .onEnded { value in scale = min(max(1, scale * value), 5) }
+                    )
+                    .onTapGesture(count: 2) {
+                        withAnimation(.easeInOut(duration: 0.2)) { scale = scale > 1 ? 1 : 2.5 }
+                    }
+                    .ignoresSafeArea()
+            } else {
+                ProgressView().tint(.white)
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Color.black.opacity(0.45))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+
+                Spacer()
+
+                if canSetProfile {
+                    Button(action: onSetProfile) {
+                        Label(
+                            lang.t(isCurrentProfile ? "detail.currentProfile" : "detail.setProfile"),
+                            systemImage: isCurrentProfile ? "star.fill" : "star"
+                        )
+                        .font(AgriFont.semibold(16))
+                        .foregroundStyle(isCurrentProfile ? .white.opacity(0.7) : .white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(isCurrentProfile ? Color.white.opacity(0.18) : AgriColors.purple)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCurrentProfile)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 36)
+                }
+            }
         }
     }
 }

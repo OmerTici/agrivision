@@ -1377,50 +1377,74 @@ struct CameraScreen: View {
                 if let result = model.identifyResult {
                     if result.isIdentified {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 50)).foregroundStyle(AgriColors.successGreen)
+                            .font(.system(size: 54)).foregroundStyle(AgriColors.successGreen)
                         Text(result.name ?? lang.t("camera.identify.identified"))
-                            .font(AgriFont.bold(22)).foregroundStyle(.white)
+                            .font(AgriFont.bold(22)).foregroundStyle(AgriColors.purpleDark)
                         Text(lang.t("camera.identify.score", result.score * 100))
-                            .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
+                            .font(AgriFont.regular(15)).foregroundStyle(AgriColors.tabInactive)
+                        secondaryButton(lang.t("camera.scanAgain")) { model.resetRecognition() }
                     } else {
                         ZStack {
                             Circle()
-                                .fill(Self.unknownAmber.opacity(0.18))
-                                .frame(width: 96, height: 96)
+                                .fill(Self.unknownAmber.opacity(0.16))
+                                .frame(width: 92, height: 92)
                             Image(systemName: "questionmark.circle.fill")
-                                .font(.system(size: 62))
+                                .font(.system(size: 58))
                                 .foregroundStyle(Self.unknownAmber)
                         }
                         Text(lang.t("camera.identify.unknown"))
-                            .font(AgriFont.bold(22)).foregroundStyle(.white)
+                            .font(AgriFont.bold(21)).foregroundStyle(AgriColors.purpleDark)
                         Text(lang.t("camera.identify.unknownPrompt"))
-                            .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
-                            .multilineTextAlignment(.center).padding(.horizontal, 24)
-                        Button { onRequestEnroll(model.croppedMuzzle, model.lastPhoto) } label: {
-                            Text(lang.t("camera.identify.enroll"))
-                                .font(AgriFont.semibold(16)).foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13).background(AgriColors.purple)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .font(AgriFont.regular(15)).foregroundStyle(AgriColors.tabInactive)
+                            .multilineTextAlignment(.center)
+                        primaryButton(lang.t("camera.identify.enroll")) {
+                            onRequestEnroll(model.croppedMuzzle, model.lastPhoto)
                         }
-                        .buttonStyle(.plain).padding(.horizontal, 24)
+                        secondaryButton(lang.t("camera.scanAgain")) { model.resetRecognition() }
                     }
                 } else if model.recognitionError != nil {
                     Image(systemName: "wifi.slash")
-                        .font(.system(size: 44)).foregroundStyle(.white)
+                        .font(.system(size: 46)).foregroundStyle(AgriColors.tabInactive)
                     Text(lang.t("camera.identify.offline"))
-                        .font(AgriFont.semibold(16)).foregroundStyle(.white)
+                        .font(AgriFont.semibold(16)).foregroundStyle(AgriColors.purpleDark)
+                    secondaryButton(lang.t("camera.scanAgain")) { model.resetRecognition() }
                 }
-
-                Button { model.resetRecognition() } label: {
-                    Text(lang.t("camera.scanAgain"))
-                        .font(AgriFont.semibold(15)).foregroundStyle(.white.opacity(0.9))
-                        .padding(.vertical, 10).padding(.horizontal, 30)
-                        .overlay(Capsule().stroke(.white.opacity(0.5), lineWidth: 1))
-                }
-                .buttonStyle(.plain)
             }
+            .padding(24)
+            .frame(maxWidth: 320)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(AgriColors.white)
+            )
+            .padding(.horizontal, 40)
         }
+    }
+
+    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(AgriFont.semibold(16)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(AgriColors.purple)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func secondaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(AgriFont.semibold(16)).foregroundStyle(AgriColors.purple)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(AgriColors.purple.opacity(0.4), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private var wakingBanner: some View {
