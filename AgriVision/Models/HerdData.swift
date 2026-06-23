@@ -183,7 +183,8 @@ final class HerdStore: ObservableObject {
         loadError = nil
         defer { isLoading = false }
         do {
-            async let pendingEvents = eventSource.recent(limit: 20)
+            // Home shows the latest 5; the scan-history screen filters the rest.
+            async let pendingEvents = eventSource.recent(limit: 100)
             let records = try await animalSource.list()
             let loaded = records.map(Animal.init(record:))
             animals = loaded

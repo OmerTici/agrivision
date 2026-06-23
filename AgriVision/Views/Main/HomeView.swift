@@ -131,26 +131,29 @@ struct HomeScreen: View {
     var onOpenSettings: () -> Void = {}
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                if let error = store.loadError {
-                    LoadErrorBanner(message: error) {
-                        Task { await store.load() }
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    header
+                    if let error = store.loadError {
+                        LoadErrorBanner(message: error) {
+                            Task { await store.load() }
+                        }
+                    }
+                    if store.isLoading && store.animals.isEmpty && store.events.isEmpty {
+                        loadingState
+                    } else {
+                        statsGrid
+                        recentActionsSection
                     }
                 }
-                if store.isLoading && store.animals.isEmpty && store.events.isEmpty {
-                    loadingState
-                } else {
-                    statsGrid
-                    recentActionsSection
-                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, AgriLayout.tabBarClearance)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, AgriLayout.tabBarClearance)
+            .refreshable { await store.load() }
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .refreshable { await store.load() }
     }
 
     private var greeting: String {
@@ -230,17 +233,28 @@ struct HomeScreen: View {
 
     private var recentActionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(
-                title: lang.t("home.recentActions"),
-                actionTitle: lang.t("home.seeAll"),
-                action: onSeeAllAnimals
-            )
+            HStack {
+                Text(lang.t("home.recentActions"))
+                    .font(AgriFont.bold(18))
+                    .foregroundStyle(AgriColors.purpleDark)
+                Spacer()
+                if !store.events.isEmpty {
+                    NavigationLink {
+                        ScanHistoryScreen()
+                    } label: {
+                        Text(lang.t("home.seeAll"))
+                            .font(AgriFont.semibold(13))
+                            .foregroundStyle(AgriColors.purple)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
             if store.events.isEmpty {
                 emptyEvents
             } else {
                 VStack(spacing: 10) {
-                    ForEach(store.events) { event in
+                    ForEach(store.events.prefix(5)) { event in
                         EventRow(event: event)
                     }
                 }
@@ -324,5 +338,154 @@ private struct EventRow: View {
                 .background(Circle().fill(event.color.opacity(0.12)))
         }
         .agriCard(padding: 12)
+    }
+}
+
+/// Full scan history with animal + date filters. Tapping a scan with a known
+/// animal opens that animal's detail. Unrecognized scans are listed but not
+/// tappable.
+struct ScanHistoryScreen: View {
+    @EnvironmentObject private var store: HerdStore
+    @ObservedObject private var lang = LanguageManager.shared
+
+    @State private var animalFilter: AnimalFilter = .all
+    @State private var dateFilter: DateFilter = .all
+
+    private enum AnimalFilter {
+        case all
+        case unrecognized
+        case animal(UUID)
+    }
+
+    private enum DateFilter: CaseIterable {
+        case all, today, week, month
+        var labelKey: String {
+            switch self {
+            case .all: return "filter.allTime"
+            case .today: return "filter.today"
+            case .week: return "filter.week"
+            case .month: return "filter.month"
+            }
+        }
+    }
+
+    private var filtered: [ScanEvent] {
+        store.events.filter { passesAnimal($0) && passesDate($0.date) }
+    }
+
+    private func passesAnimal(_ e: ScanEvent) -> Bool {
+        switch animalFilter {
+        case .all: return true
+        case .unrecognized: return e.animalID == nil
+        case .animal(let id): return e.animalID == id
+        }
+    }
+
+    private func passesDate(_ date: Date) -> Bool {
+        switch dateFilter {
+        case .all: return true
+        case .today: return Calendar.current.isDateInToday(date)
+        case .week: return date >= Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+        case .month: return date >= Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        }
+    }
+
+    private var animalFilterLabel: String {
+        switch animalFilter {
+        case .all: return lang.t("filter.allAnimals")
+        case .unrecognized: return lang.t("filter.unrecognized")
+        case .animal(let id):
+            return store.animals.first(where: { $0.id == id })?.name ?? lang.t("filter.allAnimals")
+        }
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                filters
+                if filtered.isEmpty {
+                    emptyState
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(filtered) { event in
+                            row(event)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, AgriLayout.tabBarClearance)
+        }
+        .background(AgriColors.appBackground)
+        .navigationTitle(lang.t("scanHistory.title"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func row(_ event: ScanEvent) -> some View {
+        if let animalID = event.animalID,
+           let animal = store.animals.first(where: { $0.id == animalID }) {
+            NavigationLink {
+                AnimalDetailView(animal: animal)
+            } label: {
+                EventRow(event: event)
+            }
+            .buttonStyle(.plain)
+        } else {
+            EventRow(event: event)
+        }
+    }
+
+    private var filters: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button(lang.t("filter.allAnimals")) { animalFilter = .all }
+                Button(lang.t("filter.unrecognized")) { animalFilter = .unrecognized }
+                if !store.animals.isEmpty { Divider() }
+                ForEach(store.animals) { animal in
+                    Button(animal.name.isEmpty ? animal.tag : animal.name) {
+                        animalFilter = .animal(animal.id)
+                    }
+                }
+            } label: {
+                filterChip(systemImage: "pawprint", text: animalFilterLabel)
+            }
+
+            Menu {
+                ForEach(DateFilter.allCases, id: \.self) { option in
+                    Button(lang.t(option.labelKey)) { dateFilter = option }
+                }
+            } label: {
+                filterChip(systemImage: "calendar", text: lang.t(dateFilter.labelKey))
+            }
+
+            Spacer()
+        }
+    }
+
+    private func filterChip(systemImage: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
+            Text(text).font(AgriFont.semibold(13)).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(AgriColors.purple)
+        .padding(.vertical, 8).padding(.horizontal, 12)
+        .background(Capsule().fill(AgriColors.purple.opacity(0.1)))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(AgriColors.tabInactive.opacity(0.5))
+            Text(lang.t("scanHistory.empty"))
+                .font(AgriFont.regular(14))
+                .foregroundStyle(AgriColors.tabInactive)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .agriCard()
     }
 }

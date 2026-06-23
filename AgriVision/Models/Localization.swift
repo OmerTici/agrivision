@@ -70,6 +70,14 @@ final class LanguageManager: ObservableObject {
             "home.seeAll": "See All",
             "home.recentActions": "Recent Actions",
             "home.noEvents": "No activity yet — enroll or identify an animal to see it here.",
+            "scanHistory.title": "Scan History",
+            "scanHistory.empty": "No scans match these filters.",
+            "filter.allAnimals": "All animals",
+            "filter.unrecognized": "Unrecognized",
+            "filter.allTime": "All time",
+            "filter.today": "Today",
+            "filter.week": "Last 7 days",
+            "filter.month": "Last 30 days",
             "home.needsScan": "Needs Scanning",
 
             // Tab bar
@@ -326,6 +334,14 @@ final class LanguageManager: ObservableObject {
             "home.seeAll": "Tümünü Gör",
             "home.recentActions": "Son İşlemler",
             "home.noEvents": "Henüz işlem yok — burada görmek için bir hayvan kaydedin veya tanımlayın.",
+            "scanHistory.title": "Tarama Geçmişi",
+            "scanHistory.empty": "Bu filtrelere uyan tarama yok.",
+            "filter.allAnimals": "Tüm hayvanlar",
+            "filter.unrecognized": "Tanınmayan",
+            "filter.allTime": "Tüm zamanlar",
+            "filter.today": "Bugün",
+            "filter.week": "Son 7 gün",
+            "filter.month": "Son 30 gün",
             "home.needsScan": "Tarama Bekleyenler",
 
             // Tab bar
