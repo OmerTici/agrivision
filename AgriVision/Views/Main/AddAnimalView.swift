@@ -26,11 +26,10 @@ struct AddAnimalScreen: View {
     @State private var weightText = ""
 
     // Photos gathered on the hub. Muzzle crops (cow-gated, must reach 5) are
-    // matched server-side; profile + cow photos are ungated quality-of-life shots
-    // that ride along as optional `full_images`.
+    // matched server-side; cow photos are ungated quality-of-life shots that ride
+    // along as optional `full_images`. The profile picture is later chosen from
+    // these cow photos in the herd detail screen.
     @State private var muzzleCrops: [UIImage]
-    @State private var muzzleFull: UIImage?
-    @State private var profilePhoto: UIImage?
     @State private var cowPhotos: [UIImage] = []
 
     @State private var showSavedToast = false
@@ -52,12 +51,10 @@ struct AddAnimalScreen: View {
 
     private enum ActiveCamera: Identifiable {
         case muzzle
-        case profile
         case cow
         var id: String {
             switch self {
             case .muzzle: return "muzzle"
-            case .profile: return "profile"
             case .cow: return "cow"
             }
         }
@@ -72,7 +69,6 @@ struct AddAnimalScreen: View {
         self.carriedMuzzleCrop = carriedMuzzleCrop
         self.carriedMuzzleFull = carriedMuzzleFull
         _muzzleCrops = State(initialValue: carriedMuzzleCrop.map { [$0] } ?? [])
-        _muzzleFull = State(initialValue: carriedMuzzleFull)
     }
 
     private var muzzleComplete: Bool { muzzleCrops.count >= Self.muzzleTarget }
@@ -83,13 +79,9 @@ struct AddAnimalScreen: View {
             && muzzleComplete
     }
 
-    /// Profile + cow body photos, in submission order.
-    private var extraFullFrames: [UIImage] {
-        var frames: [UIImage] = []
-        if let profilePhoto { frames.append(profilePhoto) }
-        frames.append(contentsOf: cowPhotos)
-        return frames
-    }
+    /// Cow body photos uploaded as `full_images` (the profile is chosen from
+    /// these later, in the herd detail).
+    private var extraFullFrames: [UIImage] { cowPhotos }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -123,18 +115,8 @@ struct AddAnimalScreen: View {
                         max: max(1, Self.muzzleTarget - muzzleCrops.count),
                         titleKey: "camera.collect.muzzle"
                     ),
-                    onCollected: { crops, bestFull in
+                    onCollected: { crops, _ in
                         muzzleCrops.append(contentsOf: crops)
-                        if let bestFull { muzzleFull = bestFull }
-                        activeCamera = nil
-                    }
-                )
-            case .profile:
-                CameraScreen(
-                    onClose: { activeCamera = nil },
-                    collection: CameraCollectionRequest(kind: .frame, max: 1, titleKey: "camera.collect.profile"),
-                    onCollected: { frames, _ in
-                        if let first = frames.first { profilePhoto = first }
                         activeCamera = nil
                     }
                 )
@@ -266,23 +248,8 @@ struct AddAnimalScreen: View {
 
     private var photosCard: some View {
         VStack(alignment: .leading, spacing: 18) {
-            // Profile photo (optional, 1)
-            VStack(alignment: .leading, spacing: 10) {
-                sectionHeader(title: lang.t("add.profile.title"))
-                if let profilePhoto {
-                    photoRow(image: profilePhoto, caption: lang.t("add.profile.captured")) {
-                        self.profilePhoto = nil
-                    }
-                } else {
-                    captureButton(label: lang.t("add.profile.add"), systemImage: "person.crop.square") {
-                        activeCamera = .profile
-                    }
-                }
-            }
-
-            Divider()
-
-            // Cow body photos (optional, up to 5)
+            // Cow body photos (optional, up to 5). One becomes the profile picture,
+            // chosen later in the herd detail.
             VStack(alignment: .leading, spacing: 10) {
                 sectionHeader(title: "\(lang.t("add.cow.title"))  \(cowPhotos.count)/\(Self.cowPhotoMax)")
                 if !cowPhotos.isEmpty {
@@ -349,25 +316,6 @@ struct AddAnimalScreen: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    private func photoRow(image: UIImage, caption: String, onRemove: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
-            Image(uiImage: image)
-                .resizable().scaledToFill()
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(caption)
-                .font(AgriFont.semibold(14))
-                .foregroundStyle(AgriColors.purpleDark)
-            Spacer()
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(AgriColors.tabInactive)
-            }
-            .buttonStyle(.plain)
-        }
     }
 
     private var detailsCard: some View {
@@ -530,11 +478,9 @@ struct AddAnimalScreen: View {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let trimmedTag = tag.trimmingCharacters(in: .whitespaces)
         let muzzleJpegs = muzzleCrops.compactMap { ImageEncoding.muzzleJPEG($0) }
-        var fullJpegs: [Data] = []
-        if let muzzleFull, let encoded = ImageEncoding.fullBodyJPEG(muzzleFull) {
-            fullJpegs.append(encoded)
-        }
-        fullJpegs.append(contentsOf: extraFullFrames.compactMap { ImageEncoding.fullBodyJPEG($0) })
+        // Only the user's cow photos go to full_images, so the gallery shows
+        // exactly what they took (no auto-captured muzzle frame).
+        let fullJpegs = extraFullFrames.compactMap { ImageEncoding.fullBodyJPEG($0) }
         let weightKg = Double(weightText.replacingOccurrences(of: ",", with: "."))
 
         Task {
@@ -595,8 +541,6 @@ struct AddAnimalScreen: View {
         tag = ""
         weightText = ""
         muzzleCrops = []
-        muzzleFull = nil
-        profilePhoto = nil
         cowPhotos = []
         createdAnimalID = nil
         withAnimation(.spring(duration: 0.35)) { showSavedToast = true }

@@ -63,6 +63,8 @@ struct AnimalPhotoView: View {
     let name: String
     let color: Color
     var size: CGFloat = 48
+    /// Chosen profile photo path; nil falls back to the first stored image.
+    var profilePath: String? = nil
 
     @State private var image: UIImage?
 
@@ -78,16 +80,20 @@ struct AnimalPhotoView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .task(id: animalID) {
+        .task(id: taskID) {
             guard let animalID,
                   let ownerID = SupabaseClientProvider.shared.auth.currentSession?.user.id.uuidString
             else { return }
             image = await AnimalPhotoLoader.shared.photo(
                 ownerID: ownerID,
-                animalID: animalID.uuidString
+                animalID: animalID.uuidString,
+                profilePath: profilePath
             )
         }
     }
+
+    /// Re-run the load when either the animal or its chosen profile changes.
+    private var taskID: String { "\(animalID?.uuidString ?? "")|\(profilePath ?? "")" }
 }
 
 /// Inline failure banner with a Retry button, shown when HerdStore.load() fails.

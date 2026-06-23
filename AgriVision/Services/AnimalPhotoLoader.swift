@@ -21,15 +21,21 @@ final class AnimalPhotoLoader {
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
     }
 
-    /// Returns the animal's photo, or nil so the caller falls back to the
-    /// initials avatar. Never throws.
-    func photo(ownerID: String, animalID: String) async -> UIImage? {
+    /// Returns the animal's display photo, or nil so the caller falls back to the
+    /// initials avatar. Uses the chosen `profilePath` when set, otherwise the
+    /// first stored image. Never throws.
+    func photo(ownerID: String, animalID: String, profilePath: String? = nil) async -> UIImage? {
         let cacheKey = "\(ownerID.lowercased())/\(animalID.lowercased())" as NSString
         if let cached = memoryCache.object(forKey: cacheKey) {
             return cached
         }
 
-        guard let objectPath = await firstObjectPath(ownerID: ownerID, animalID: animalID) else {
+        let objectPath: String
+        if let profilePath, !profilePath.isEmpty {
+            objectPath = profilePath
+        } else if let first = await firstObjectPath(ownerID: ownerID, animalID: animalID) {
+            objectPath = first
+        } else {
             return nil
         }
 
@@ -79,17 +85,24 @@ final class AnimalPhotoLoader {
         if animalID.lowercased() != animalID {
             animalSegments.append(animalID.lowercased())
         }
-        var paths: [String] = []
         for animal in animalSegments {
             let prefix = "\(owner)/\(animal)/full"
             guard let objects = try? await client.storage.from("muzzles").list(path: prefix) else {
                 continue
             }
-            for object in objects where object.name.hasSuffix(".jpg") {
-                paths.append("\(prefix)/\(object.name)")
-            }
+            let paths = objects.filter { $0.name.hasSuffix(".jpg") }.map { "\(prefix)/\($0.name)" }
+            // The first casing that actually has files wins — don't also append the
+            // other casing, which on a case-insensitive backend would double them.
+            if !paths.isEmpty { return paths }
         }
-        return paths
+        return []
+    }
+
+    /// Drops the cached avatar for an animal so the next load reflects a newly
+    /// chosen profile photo.
+    func invalidateAvatar(ownerID: String, animalID: String) {
+        let key = "\(ownerID.lowercased())/\(animalID.lowercased())" as NSString
+        memoryCache.removeObject(forKey: key)
     }
 
     /// Downloads (and caches) a single image by its storage object path. Used by

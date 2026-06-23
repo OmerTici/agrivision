@@ -250,7 +250,8 @@ private struct AnimalCard: View {
                 animalID: animal.id,
                 name: animal.name,
                 color: animal.avatarColor,
-                size: 50
+                size: 50,
+                profilePath: animal.profilePath
             )
 
             VStack(alignment: .leading, spacing: 3) {
@@ -303,7 +304,11 @@ struct AnimalDetailView: View {
                 topBar
                 identityCard
                 infoGrid
-                AnimalPhotosGallery(animalID: animal.id)
+                AnimalPhotosGallery(
+                    animalID: animal.id,
+                    profilePath: animal.profilePath,
+                    onSelectProfile: selectProfile
+                )
                 Button(role: .destructive) {
                     showDeleteConfirm = true
                 } label: {
@@ -346,6 +351,17 @@ struct AnimalDetailView: View {
         } message: {
             Text(lang.t("delete.confirmBody"))
         }
+    }
+
+    /// Persists a newly chosen profile photo: optimistic local update + cache
+    /// invalidation so the avatar refreshes, then the server PATCH.
+    private func selectProfile(_ path: String) {
+        animal.profilePath = path
+        store.setProfilePath(id: animal.id, path: path)
+        if let ownerID = SupabaseClientProvider.shared.auth.currentSession?.user.id.uuidString {
+            AnimalPhotoLoader.shared.invalidateAvatar(ownerID: ownerID, animalID: animal.id.uuidString)
+        }
+        Task { try? await repository.setProfilePath(animalID: animal.id.uuidString, path: path) }
     }
 
     private func performDelete() {
@@ -407,7 +423,8 @@ struct AnimalDetailView: View {
                 animalID: animal.id,
                 name: animal.name,
                 color: animal.avatarColor,
-                size: 72
+                size: 72,
+                profilePath: animal.profilePath
             )
 
             VStack(alignment: .leading, spacing: 5) {
@@ -447,13 +464,19 @@ struct AnimalDetailView: View {
 }
 
 /// Horizontal gallery of an animal's quality-of-life photos (profile + cow body
-/// shots) from the private storage bucket. Muzzle crops are excluded. Hidden
-/// when empty.
+/// shots) from the private storage bucket. Muzzle crops are excluded. Tapping a
+/// photo sets it as the animal's profile picture.
 struct AnimalPhotosGallery: View {
     let animalID: UUID
+    /// The animal's current profile path; the matching thumbnail is badged.
+    let profilePath: String?
+    /// Called when the user picks a new profile photo (storage object path).
+    let onSelectProfile: (String) -> Void
+
     @ObservedObject private var lang = LanguageManager.shared
     @State private var paths: [String] = []
     @State private var images: [String: UIImage] = [:]
+    @State private var selected: String?
     @State private var loaded = false
 
     var body: some View {
@@ -470,6 +493,9 @@ struct AnimalPhotosGallery: View {
                         }
                     }
                 }
+                Text(lang.t("detail.photosTapHint"))
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.tabInactive)
             } else if loaded {
                 Text(lang.t("detail.photosEmpty"))
                     .font(AgriFont.regular(13))
@@ -485,19 +511,39 @@ struct AnimalPhotosGallery: View {
 
     @ViewBuilder
     private func thumbnail(_ path: String) -> some View {
-        ZStack {
-            if let image = images[path] {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AgriColors.purple.opacity(0.06))
-                ProgressView().tint(AgriColors.purple)
+        let isProfile = selected == path
+        Button {
+            selected = path
+            onSelectProfile(path)
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    if let image = images[path] {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AgriColors.purple.opacity(0.06))
+                        ProgressView().tint(AgriColors.purple)
+                    }
+                }
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isProfile ? AgriColors.purple : Color.clear, lineWidth: 3)
+                )
+
+                if isProfile {
+                    Image(systemName: "star.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white, AgriColors.purple)
+                        .padding(4)
+                }
             }
         }
-        .frame(width: 96, height: 96)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .buttonStyle(.plain)
         .task {
             if images[path] == nil {
                 images[path] = await AnimalPhotoLoader.shared.image(at: path)
@@ -516,6 +562,8 @@ struct AnimalPhotosGallery: View {
         )
         await MainActor.run {
             paths = result
+            // Default the badge to the saved profile, else the first photo.
+            selected = profilePath ?? result.first
             loaded = true
         }
     }

@@ -6,9 +6,15 @@ create table if not exists animals (
   owner uuid references auth.users not null,
   name text, tag text, breed text, sex text,
   birth_date date, status text,
+  -- Storage object path of the user-chosen profile photo (one of the animal's
+  -- full/ images). Null = fall back to the first full image.
+  profile_path text,
   deleted_at timestamptz,
   created_at timestamptz default now()
 );
+
+-- Migration for existing databases (safe to re-run):
+alter table animals add column if not exists profile_path text;
 
 create table if not exists embeddings (
   id uuid primary key default gen_random_uuid(),
