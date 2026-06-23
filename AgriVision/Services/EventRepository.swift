@@ -43,6 +43,13 @@ struct EventRecord: Identifiable, Decodable, Equatable {
     }
 }
 
+/// Animal scope for an events query.
+enum EventAnimalFilter: Equatable {
+    case all
+    case specific(UUID)
+    case unrecognized   // animal_id IS NULL
+}
+
 /// Reads the signed-in owner's recent events via PostgREST (RLS-scoped).
 /// GET /rest/v1/events?select=*&order=created_at.desc&limit=N
 struct EventRepository {
@@ -59,6 +66,26 @@ struct EventRepository {
             .select()
             .order("created_at", ascending: false)
             .limit(limit)
+            .execute()
+        return try JSONDecoder().decode([EventRecord].self, from: response.data)
+    }
+
+    /// A page of events (newest first) for the scan-history screen, filtered
+    /// server-side so pagination stays correct under filters. `range` is
+    /// inclusive: offset..<offset+limit.
+    func page(offset: Int, limit: Int, animal: EventAnimalFilter, since: Date?) async throws -> [EventRecord] {
+        var query = client.from("events").select()
+        switch animal {
+        case .all: break
+        case .specific(let id): query = query.eq("animal_id", value: id.uuidString)
+        case .unrecognized: query = query.is("animal_id", value: nil)
+        }
+        if let since {
+            query = query.gte("created_at", value: ISO8601DateFormatter().string(from: since))
+        }
+        let response = try await query
+            .order("created_at", ascending: false)
+            .range(from: offset, to: offset + limit - 1)
             .execute()
         return try JSONDecoder().decode([EventRecord].self, from: response.data)
     }
