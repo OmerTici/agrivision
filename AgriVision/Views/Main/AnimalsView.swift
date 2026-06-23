@@ -446,8 +446,9 @@ struct AnimalDetailView: View {
     }
 }
 
-/// Horizontal gallery of every enrolled image for an animal (full-body shots +
-/// muzzle crops), pulled from the private storage bucket. Hidden when empty.
+/// Horizontal gallery of an animal's quality-of-life photos (profile + cow body
+/// shots) from the private storage bucket. Muzzle crops are excluded. Hidden
+/// when empty.
 struct AnimalPhotosGallery: View {
     let animalID: UUID
     @ObservedObject private var lang = LanguageManager.shared
@@ -506,7 +507,7 @@ struct AnimalPhotosGallery: View {
             loaded = true
             return
         }
-        let result = await AnimalPhotoLoader.shared.allPhotoPaths(
+        let result = await AnimalPhotoLoader.shared.galleryPhotoPaths(
             ownerID: ownerID,
             animalID: animalID.uuidString
         )

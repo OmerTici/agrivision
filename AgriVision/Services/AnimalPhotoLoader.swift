@@ -70,24 +70,23 @@ final class AnimalPhotoLoader {
         return nil
     }
 
-    /// All enrolled image object paths for an animal — full-body shots first,
-    /// then muzzle crops — for the detail gallery. Empty on any failure.
-    func allPhotoPaths(ownerID: String, animalID: String) async -> [String] {
+    /// The animal's quality-of-life photos (profile + cow body shots) for the
+    /// detail gallery. Muzzle crops are program data, not user-facing, so they're
+    /// excluded — only the `full/` folder is listed. Empty on any failure.
+    func galleryPhotoPaths(ownerID: String, animalID: String) async -> [String] {
         let owner = ownerID.lowercased()
         var animalSegments = [animalID]
         if animalID.lowercased() != animalID {
             animalSegments.append(animalID.lowercased())
         }
         var paths: [String] = []
-        for kind in ["full", "muzzle"] {
-            for animal in animalSegments {
-                let prefix = "\(owner)/\(animal)/\(kind)"
-                guard let objects = try? await client.storage.from("muzzles").list(path: prefix) else {
-                    continue
-                }
-                for object in objects where object.name.hasSuffix(".jpg") {
-                    paths.append("\(prefix)/\(object.name)")
-                }
+        for animal in animalSegments {
+            let prefix = "\(owner)/\(animal)/full"
+            guard let objects = try? await client.storage.from("muzzles").list(path: prefix) else {
+                continue
+            }
+            for object in objects where object.name.hasSuffix(".jpg") {
+                paths.append("\(prefix)/\(object.name)")
             }
         }
         return paths
