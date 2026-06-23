@@ -3,12 +3,13 @@ import SwiftUI
 struct AddAnimalScreen: View {
     @EnvironmentObject private var store: HerdStore
     @EnvironmentObject private var auth: AuthService
+    @EnvironmentObject private var recognition: CloudRunRecognitionService
     @ObservedObject private var lang = LanguageManager.shared
     /// Switches to the My Herd (Animals) tab. Mirrors the Animals header's
     /// quick-jump button, in reverse.
     let onOpenHerd: () -> Void
     /// Muzzle carried in from the "not recognized" identify screen, if any. Seeds
-    /// the enrollment burst as scan 1 of 5.
+    /// the muzzle scans as scan 1 of 5.
     let carriedMuzzleCrop: UIImage?
     let carriedMuzzleFull: UIImage?
 
@@ -24,10 +25,10 @@ struct AddAnimalScreen: View {
     @State private var birthDate = Calendar.current.date(byAdding: .year, value: -2, to: Date()) ?? Date()
     @State private var weightText = ""
 
-    // Photos gathered for enrollment. The muzzle seed (0 or 1) is completed to 5
-    // in the enrollment camera after Save; profile + cow photos ride along as
-    // optional `full_images`.
-    @State private var muzzleCrop: UIImage?
+    // Photos gathered on the hub. Muzzle crops (cow-gated, must reach 5) are
+    // matched server-side; profile + cow photos are ungated quality-of-life shots
+    // that ride along as optional `full_images`.
+    @State private var muzzleCrops: [UIImage]
     @State private var muzzleFull: UIImage?
     @State private var profilePhoto: UIImage?
     @State private var cowPhotos: [UIImage] = []
@@ -35,17 +36,20 @@ struct AddAnimalScreen: View {
     @State private var showSavedToast = false
     @State private var isSaving = false
     @State private var saveError: String?
+    /// Set once the animal row is created, so an enroll retry doesn't create a
+    /// duplicate.
+    @State private var createdAnimalID: String?
     @State private var activeCamera: ActiveCamera?
 
     private enum ActiveCamera: Identifiable {
+        case muzzle
         case profile
         case cow
-        case enroll(String)
         var id: String {
             switch self {
+            case .muzzle: return "muzzle"
             case .profile: return "profile"
             case .cow: return "cow"
-            case .enroll(let id): return "enroll-\(id)"
             }
         }
     }
@@ -58,13 +62,16 @@ struct AddAnimalScreen: View {
         self.onOpenHerd = onOpenHerd
         self.carriedMuzzleCrop = carriedMuzzleCrop
         self.carriedMuzzleFull = carriedMuzzleFull
-        _muzzleCrop = State(initialValue: carriedMuzzleCrop)
+        _muzzleCrops = State(initialValue: carriedMuzzleCrop.map { [$0] } ?? [])
         _muzzleFull = State(initialValue: carriedMuzzleFull)
     }
+
+    private var muzzleComplete: Bool { muzzleCrops.count >= Self.muzzleTarget }
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && !tag.trimmingCharacters(in: .whitespaces).isEmpty
+            && muzzleComplete
     }
 
     /// Profile + cow body photos, in submission order.
@@ -97,11 +104,25 @@ struct AddAnimalScreen: View {
         }
         .fullScreenCover(item: $activeCamera) { which in
             switch which {
+            case .muzzle:
+                CameraScreen(
+                    onClose: { activeCamera = nil },
+                    collection: CameraCollectionRequest(
+                        kind: .muzzle,
+                        max: max(1, Self.muzzleTarget - muzzleCrops.count),
+                        titleKey: "camera.collect.muzzle"
+                    ),
+                    onCollected: { crops, bestFull in
+                        muzzleCrops.append(contentsOf: crops)
+                        if let bestFull { muzzleFull = bestFull }
+                        activeCamera = nil
+                    }
+                )
             case .profile:
                 CameraScreen(
                     onClose: { activeCamera = nil },
-                    frameCollection: FrameCollectionRequest(max: 1, titleKey: "camera.collect.profile"),
-                    onFramesCollected: { frames in
+                    collection: CameraCollectionRequest(kind: .frame, max: 1, titleKey: "camera.collect.profile"),
+                    onCollected: { frames, _ in
                         if let first = frames.first { profilePhoto = first }
                         activeCamera = nil
                     }
@@ -109,23 +130,15 @@ struct AddAnimalScreen: View {
             case .cow:
                 CameraScreen(
                     onClose: { activeCamera = nil },
-                    frameCollection: FrameCollectionRequest(
+                    collection: CameraCollectionRequest(
+                        kind: .frame,
                         max: max(1, Self.cowPhotoMax - cowPhotos.count),
                         titleKey: "camera.collect.cow"
                     ),
-                    onFramesCollected: { frames in
+                    onCollected: { frames, _ in
                         cowPhotos.append(contentsOf: frames)
                         activeCamera = nil
                     }
-                )
-            case .enroll(let animalID):
-                CameraScreen(
-                    onClose: { finishAfterEnroll() },
-                    onEnrollSuccess: { store.markLastAddedMuzzleRegistered() },
-                    enrollAnimalID: animalID,
-                    enrollSeedCrops: muzzleCrop.map { [$0] } ?? [],
-                    enrollSeedFullFrame: muzzleFull,
-                    enrollExtraFullFrames: extraFullFrames
                 )
             }
         }
@@ -158,68 +171,93 @@ struct AddAnimalScreen: View {
         }
     }
 
-    // MARK: Muzzle (required)
+    // MARK: Muzzle (required, tap to scan)
 
     private var muzzleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(title: lang.t("add.muzzle.title"), required: true)
+            HStack(spacing: 6) {
+                Text(lang.t("add.muzzle.title"))
+                    .font(AgriFont.semibold(15))
+                    .foregroundStyle(AgriColors.purpleDark)
+                Text("\(muzzleCrops.count)/\(Self.muzzleTarget)")
+                    .font(AgriFont.semibold(13))
+                    .foregroundStyle(muzzleComplete ? AgriColors.successGreen : AgriColors.purple)
+                Spacer()
+                if muzzleComplete {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(AgriColors.successGreen)
+                }
+            }
 
-            if let muzzleCrop {
-                HStack(spacing: 12) {
-                    Image(uiImage: muzzleCrop)
-                        .resizable().scaledToFill()
-                        .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(lang.t("add.muzzle.seeded"))
+            if !muzzleCrops.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(muzzleCrops.enumerated()), id: \.offset) { idx, img in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: img)
+                                    .resizable().scaledToFill()
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                Button {
+                                    muzzleCrops.remove(at: idx)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(.white)
+                                        .background(Circle().fill(.black.opacity(0.5)))
+                                }
+                                .buttonStyle(.plain)
+                                .padding(3)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !muzzleComplete {
+                Button {
+                    activeCamera = .muzzle
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "viewfinder")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(lang.t(muzzleCrops.isEmpty ? "add.muzzle.scan" : "add.muzzle.scanMore"))
                             .font(AgriFont.semibold(14))
-                            .foregroundStyle(AgriColors.purpleDark)
-                        Text(lang.t("add.muzzle.seededHint"))
-                            .font(AgriFont.regular(12))
-                            .foregroundStyle(AgriColors.tabInactive)
                     }
-                    Spacer()
-                    Button {
-                        self.muzzleCrop = nil
-                        self.muzzleFull = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(AgriColors.tabInactive)
-                    }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AgriColors.purple)
+                    )
                 }
-            } else {
-                HStack(spacing: 10) {
-                    Image(systemName: "viewfinder")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(AgriColors.purple)
-                    Text(lang.t("add.muzzle.prompt"))
-                        .font(AgriFont.regular(13))
-                        .foregroundStyle(AgriColors.tabInactive)
-                }
+                .buttonStyle(.plain)
+                Text(lang.t("add.muzzle.hint"))
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.tabInactive)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AgriColors.purple.opacity(0.06))
+                .fill((muzzleComplete ? AgriColors.successGreen : AgriColors.purple).opacity(0.06))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(AgriColors.purple.opacity(0.4),
-                              style: StrokeStyle(lineWidth: 1.5, dash: muzzleCrop == nil ? [6, 5] : []))
+                .strokeBorder((muzzleComplete ? AgriColors.successGreen : AgriColors.purple).opacity(0.4),
+                              style: StrokeStyle(lineWidth: 1.5, dash: muzzleComplete ? [] : [6, 5]))
         )
     }
 
-    // MARK: Optional photos (profile + cow body)
+    // MARK: Optional photos (profile + cow body, ungated)
 
     private var photosCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             // Profile photo (optional, 1)
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeader(title: lang.t("add.profile.title"), required: false)
+                sectionHeader(title: lang.t("add.profile.title"))
                 if let profilePhoto {
                     photoRow(image: profilePhoto, caption: lang.t("add.profile.captured")) {
                         self.profilePhoto = nil
@@ -235,10 +273,7 @@ struct AddAnimalScreen: View {
 
             // Cow body photos (optional, up to 5)
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeader(
-                    title: "\(lang.t("add.cow.title"))  \(cowPhotos.count)/\(Self.cowPhotoMax)",
-                    required: false
-                )
+                sectionHeader(title: "\(lang.t("add.cow.title"))  \(cowPhotos.count)/\(Self.cowPhotoMax)")
                 if !cowPhotos.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -273,18 +308,16 @@ struct AddAnimalScreen: View {
         .agriCard()
     }
 
-    private func sectionHeader(title: String, required: Bool) -> some View {
+    private func sectionHeader(title: String) -> some View {
         HStack(spacing: 6) {
             Text(title)
                 .font(AgriFont.semibold(15))
                 .foregroundStyle(AgriColors.purpleDark)
-            Text(lang.t(required ? "add.required" : "add.optional"))
+            Text(lang.t("add.optional"))
                 .font(AgriFont.semibold(11))
-                .foregroundStyle(required ? AgriColors.purple : AgriColors.tabInactive)
+                .foregroundStyle(AgriColors.tabInactive)
                 .padding(.vertical, 2).padding(.horizontal, 7)
-                .background(
-                    Capsule().fill((required ? AgriColors.purple : AgriColors.tabInactive).opacity(0.12))
-                )
+                .background(Capsule().fill(AgriColors.tabInactive.opacity(0.12)))
         }
     }
 
@@ -378,10 +411,12 @@ struct AddAnimalScreen: View {
             .buttonStyle(.plain)
             .disabled(!canSave || isSaving)
 
-            Text(lang.t("add.saveEnrollHint"))
-                .font(AgriFont.regular(12))
-                .foregroundStyle(AgriColors.tabInactive)
-                .frame(maxWidth: .infinity, alignment: .center)
+            if !muzzleComplete {
+                Text(lang.t("add.saveEnrollHint"))
+                    .font(AgriFont.regular(12))
+                    .foregroundStyle(AgriColors.tabInactive)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
     }
 
@@ -406,33 +441,53 @@ struct AddAnimalScreen: View {
         isSaving = true
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let trimmedTag = tag.trimmingCharacters(in: .whitespaces)
+        let muzzleJpegs = muzzleCrops.compactMap { ImageEncoding.muzzleJPEG($0) }
+        var fullJpegs: [Data] = []
+        if let muzzleFull, let encoded = ImageEncoding.fullBodyJPEG(muzzleFull) {
+            fullJpegs.append(encoded)
+        }
+        fullJpegs.append(contentsOf: extraFullFrames.compactMap { ImageEncoding.fullBodyJPEG($0) })
+        let weightKg = Double(weightText.replacingOccurrences(of: ",", with: "."))
 
         Task {
             do {
-                let created = try await repository.create(
-                    ownerID: ownerID,
-                    name: trimmedName,
-                    tag: trimmedTag,
-                    breed: breed,
-                    sex: sex,
-                    birthDate: birthDate
-                )
-                await MainActor.run {
-                    // Keep the in-memory herd list in sync (muzzleRegistered flips
-                    // to true only after a successful enroll — see markLast…).
-                    store.addAnimal(
+                // Create the animal row once; an enroll retry reuses the same id.
+                let animalID: String
+                if let existing = createdAnimalID {
+                    animalID = existing
+                } else {
+                    let created = try await repository.create(
+                        ownerID: ownerID,
                         name: trimmedName,
                         tag: trimmedTag,
                         breed: breed,
                         sex: sex,
-                        birthDate: birthDate,
-                        initialWeightKg: Double(weightText.replacingOccurrences(of: ",", with: ".")),
-                        muzzleRegistered: false
+                        birthDate: birthDate
                     )
+                    await MainActor.run {
+                        store.addAnimal(
+                            name: trimmedName,
+                            tag: trimmedTag,
+                            breed: breed,
+                            sex: sex,
+                            birthDate: birthDate,
+                            initialWeightKg: weightKg,
+                            muzzleRegistered: false
+                        )
+                        createdAnimalID = created.id
+                    }
+                    animalID = created.id
+                }
+
+                _ = try await recognition.enroll(
+                    animalID: animalID,
+                    muzzleJpegs: muzzleJpegs,
+                    fullJpegs: fullJpegs
+                )
+                await MainActor.run {
+                    store.markLastAddedMuzzleRegistered()
                     isSaving = false
-                    // Launch the enrollment camera: completes the 5 muzzle scans and
-                    // submits them with the profile + cow photos gathered above.
-                    activeCamera = .enroll(created.id)
+                    resetAndToast()
                 }
             } catch {
                 await MainActor.run {
@@ -443,23 +498,23 @@ struct AddAnimalScreen: View {
         }
     }
 
-    /// Resets the form after the enrollment camera closes (success or cancel) and
-    /// shows the saved toast.
-    private func finishAfterEnroll() {
-        activeCamera = nil
+    /// Clears the form after a successful enrollment and shows the saved toast.
+    private func resetAndToast() {
         name = ""
         tag = ""
         weightText = ""
-        muzzleCrop = nil
+        muzzleCrops = []
         muzzleFull = nil
         profilePhoto = nil
         cowPhotos = []
+        createdAnimalID = nil
         withAnimation(.spring(duration: 0.35)) { showSavedToast = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             withAnimation { showSavedToast = false }
         }
     }
 }
+
 
 private struct FormField: View {
     let label: String
