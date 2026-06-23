@@ -2,7 +2,7 @@ import CoreML
 import UIKit
 import Vision
 
-/// A single cow detection from the live gate (COCO YOLO11n, "cow" class).
+/// A single cow detection from the live gate (COCO YOLO11s, "cow" class).
 struct CowDetection {
     let boundingBox: CGRect
     let confidence: Float
@@ -23,7 +23,8 @@ final class CowDetectorService {
         let config = MLModelConfiguration()
         // CPU only: this YOLO export produces wrong/garbage scores on the iPhone
         // Neural Engine (the .all path), so cows scored ~0 on device. CPU matches
-        // the verified offline behavior. YOLO11n is small enough to stay realtime.
+        // the verified offline behavior. YOLO11s on CPU stays realtime for the
+        // live gate; ~3.5x the compute of a nano model, so watch latency/thermals.
         config.computeUnits = .cpuOnly
 
         if let url = Bundle.main.url(forResource: "CowDetector", withExtension: "mlmodelc") {
