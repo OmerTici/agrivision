@@ -154,27 +154,34 @@ final class CameraModel: NSObject, ObservableObject {
 
     // MARK: Cow gating (tune these)
     //
-    // The live gate uses a stock COCO YOLO11n detector and keys on the whole-animal
+    // The live gate uses a stock COCO YOLO11s detector and keys on the whole-animal
     // "cow" box, so the geometry is loose: a close cow can fill the frame and touch
     // the edges. The muzzle is localized separately on the captured still.
 
-    private let edgeMargin: CGFloat = 0.0
+    private let edgeMargin: CGFloat = 0.04
     /// How long a qualifying cow must be held steady before auto-capture.
     private let holdDuration: TimeInterval = 2.0
 
     /// Minimum confidence for the live preview gate. Stock COCO "cow" scores run
-    /// ~0.3–0.9 depending on framing, so the floor is kept modest; the class
-    /// filter plus the geometry checks in `qualifiesCowLive` reject non-cows.
-    private let cowConfidenceThreshold: Float = 0.35
+    /// ~0.3–0.9 depending on framing. Strict-gate test build: raised so only a
+    /// clearly-scored cow trips the gate; the class filter plus the geometry
+    /// checks in `qualifiesCowLive` further reject non-cows and bad framing.
+    /// If close cows in dim barns stop firing, drop this back toward ~0.45.
+    private let cowConfidenceThreshold: Float = 0.55
     /// Floor for cropping a muzzle from the captured still — the muzzle YOLO11n
     /// export's NMS won't emit below 0.25, so this accepts what it detects and
     /// lets a failed crop ask for a retry rather than enrolling a junk box.
     private let muzzleConfidenceThreshold: Float = 0.25
-    private let minCowBoxWidth: CGFloat = 0.05
-    private let minCowBoxHeight: CGFloat = 0.05
-    private let maxCowBoxWidth: CGFloat = 1.0
-    private let maxCowBoxHeight: CGFloat = 1.0
-    private let cowCenterRange: ClosedRange<CGFloat> = 0.02...0.98
+    /// Strict-gate test build: gate on how much of the frame the cow fills by
+    /// AREA, not per-axis. Cows are wider than tall side-on, so a per-axis floor
+    /// rejected legitimate broadside framing on the short axis. Area is
+    /// pose-agnostic: the cow must cover ≥12% of the picture (≈ a 35%×35% box,
+    /// but a wide-and-short or tall-and-thin cow of equal area also passes).
+    /// Raising this is the main lever against far-away, low-quality triggers.
+    private let minCowAreaFraction: CGFloat = 0.12
+    /// Strict-gate test build: box center must sit in the middle ~40% of frame,
+    /// rejecting cows drifting at the edges.
+    private let cowCenterRange: ClosedRange<CGFloat> = 0.30...0.70
 
     private static let idleReadout = "Point at the cow's head…"
 
@@ -655,8 +662,7 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard detection.confidence >= cowConfidenceThreshold else { return false }
 
         let box = detection.boundingBox
-        guard box.width >= minCowBoxWidth, box.height >= minCowBoxHeight else { return false }
-        guard box.width <= maxCowBoxWidth, box.height <= maxCowBoxHeight else { return false }
+        guard box.width * box.height >= minCowAreaFraction else { return false }
 
         let aspect = box.width / max(box.height, 0.001)
         if aspect > 3.5, box.width > 0.45 { return false }
