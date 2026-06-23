@@ -354,6 +354,7 @@ private struct EventRow: View {
 struct ScanHistoryScreen: View {
     @EnvironmentObject private var store: HerdStore
     @ObservedObject private var lang = LanguageManager.shared
+    @Environment(\.dismiss) private var dismiss
 
     private let repository = EventRepository()
     private static let pageSize = 30
@@ -388,6 +389,8 @@ struct ScanHistoryScreen: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 10) {
+                topBar
+                    .padding(.bottom, 2)
                 filters
                     .padding(.bottom, 4)
 
@@ -413,8 +416,7 @@ struct ScanHistoryScreen: View {
             .padding(.bottom, AgriLayout.tabBarClearance)
         }
         .background(AgriColors.appBackground)
-        .navigationTitle(lang.t("scanHistory.title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             guard !didInitialLoad else { return }
             didInitialLoad = true
@@ -422,6 +424,29 @@ struct ScanHistoryScreen: View {
         }
         .onChange(of: animalFilter) { _, _ in Task { await reload() } }
         .onChange(of: dateFilter) { _, _ in Task { await reload() } }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AgriColors.purple)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        Circle()
+                            .fill(Color.white)
+                            .shadow(color: AgriColors.purpleDark.opacity(0.08), radius: 8, y: 3)
+                    )
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Text(lang.t("scanHistory.title"))
+                .font(AgriFont.semibold(16))
+                .foregroundStyle(AgriColors.purpleDark)
+            Spacer()
+            Color.clear.frame(width: 38, height: 38)
+        }
     }
 
     @ViewBuilder
