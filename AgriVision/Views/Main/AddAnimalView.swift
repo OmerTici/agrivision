@@ -34,12 +34,21 @@ struct AddAnimalScreen: View {
     @State private var cowPhotos: [UIImage] = []
 
     @State private var showSavedToast = false
-    @State private var isSaving = false
-    @State private var saveError: String?
+    @State private var enrollStatus: EnrollStatus = .idle
     /// Set once the animal row is created, so an enroll retry doesn't create a
     /// duplicate.
     @State private var createdAnimalID: String?
     @State private var activeCamera: ActiveCamera?
+
+    /// Drives the enrollment popup (please-wait → success / fail).
+    private enum EnrollStatus: Equatable {
+        case idle
+        case submitting
+        case success
+        case failed(String)
+    }
+
+    private var isSubmitting: Bool { enrollStatus == .submitting }
 
     private enum ActiveCamera: Identifiable {
         case muzzle
@@ -101,6 +110,8 @@ struct AddAnimalScreen: View {
             if showSavedToast {
                 savedToast
             }
+
+            enrollOverlay
         }
         .fullScreenCover(item: $activeCamera) { which in
             switch which {
@@ -391,25 +402,19 @@ struct AddAnimalScreen: View {
 
     private var saveButton: some View {
         VStack(spacing: 10) {
-            if let saveError {
-                Text(saveError)
-                    .font(AgriFont.regular(13))
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
             Button(action: save) {
-                Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("add.saveEnroll"))
+                Text(lang.t("add.saveEnroll"))
                     .font(AgriFont.bold(16))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(canSave && !isSaving ? AgriColors.purple : AgriColors.purple.opacity(0.35))
+                            .fill(canSave && !isSubmitting ? AgriColors.purple : AgriColors.purple.opacity(0.35))
                     )
             }
             .buttonStyle(.plain)
-            .disabled(!canSave || isSaving)
+            .disabled(!canSave || isSubmitting)
 
             if !muzzleComplete {
                 Text(lang.t("add.saveEnrollHint"))
@@ -417,6 +422,90 @@ struct AddAnimalScreen: View {
                     .foregroundStyle(AgriColors.tabInactive)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
+        }
+    }
+
+    // MARK: Enrollment popup
+
+    @ViewBuilder
+    private var enrollOverlay: some View {
+        if enrollStatus != .idle {
+            ZStack {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
+                VStack(spacing: 18) {
+                    switch enrollStatus {
+                    case .submitting:
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(AgriColors.purple)
+                        Text(lang.t("enroll.popup.wait"))
+                            .font(AgriFont.semibold(16))
+                            .foregroundStyle(AgriColors.purpleDark)
+                        Text(lang.t("enroll.popup.waitHint"))
+                            .font(AgriFont.regular(13))
+                            .foregroundStyle(AgriColors.tabInactive)
+                            .multilineTextAlignment(.center)
+
+                    case .success:
+                        AnimatedResultIcon(systemName: "checkmark.circle.fill", color: AgriColors.successGreen)
+                        Text(lang.t("enroll.popup.success"))
+                            .font(AgriFont.bold(18))
+                            .foregroundStyle(AgriColors.purpleDark)
+
+                    case .failed(let message):
+                        AnimatedResultIcon(systemName: "xmark.circle.fill", color: .red)
+                        Text(lang.t("enroll.popup.failed"))
+                            .font(AgriFont.bold(18))
+                            .foregroundStyle(AgriColors.purpleDark)
+                        Text(message)
+                            .font(AgriFont.regular(13))
+                            .foregroundStyle(AgriColors.tabInactive)
+                            .multilineTextAlignment(.center)
+                        HStack(spacing: 12) {
+                            Button { enrollStatus = .idle } label: {
+                                Text(lang.t("enroll.popup.close"))
+                                    .font(AgriFont.semibold(15))
+                                    .foregroundStyle(AgriColors.purple)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(AgriColors.purple.opacity(0.4), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            Button(action: save) {
+                                Text(lang.t("enroll.popup.retry"))
+                                    .font(AgriFont.semibold(15))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(AgriColors.purple)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.top, 4)
+
+                    case .idle:
+                        EmptyView()
+                    }
+                }
+                .padding(28)
+                .frame(maxWidth: 320)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(AgriColors.white)
+                )
+                .padding(.horizontal, 40)
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
+            }
+            .animation(.easeInOut(duration: 0.2), value: enrollStatus)
         }
     }
 
@@ -434,11 +523,10 @@ struct AddAnimalScreen: View {
 
     private func save() {
         guard let ownerID = auth.userID else {
-            saveError = lang.t("auth.error.generic")
+            enrollStatus = .failed(lang.t("auth.error.generic"))
             return
         }
-        saveError = nil
-        isSaving = true
+        withAnimation { enrollStatus = .submitting }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let trimmedTag = tag.trimmingCharacters(in: .whitespaces)
         let muzzleJpegs = muzzleCrops.compactMap { ImageEncoding.muzzleJPEG($0) }
@@ -486,13 +574,16 @@ struct AddAnimalScreen: View {
                 )
                 await MainActor.run {
                     store.markLastAddedMuzzleRegistered()
-                    isSaving = false
-                    resetAndToast()
+                    withAnimation { enrollStatus = .success }
+                    // Hold the success animation briefly, then reset the form.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                        withAnimation { enrollStatus = .idle }
+                        resetAndToast()
+                    }
                 }
             } catch {
                 await MainActor.run {
-                    isSaving = false
-                    saveError = error.localizedDescription
+                    withAnimation { enrollStatus = .failed(error.localizedDescription) }
                 }
             }
         }
@@ -512,6 +603,24 @@ struct AddAnimalScreen: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             withAnimation { showSavedToast = false }
         }
+    }
+}
+
+/// A result glyph that springs in (used by the enrollment popup).
+private struct AnimatedResultIcon: View {
+    let systemName: String
+    let color: Color
+    @State private var shown = false
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 64))
+            .foregroundStyle(color)
+            .scaleEffect(shown ? 1 : 0.4)
+            .opacity(shown ? 1 : 0)
+            .onAppear {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) { shown = true }
+            }
     }
 }
 
