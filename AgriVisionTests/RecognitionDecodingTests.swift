@@ -110,7 +110,7 @@ final class RecognitionDecodingTests: XCTestCase {
         let muzzles = (0..<5).map { _ in Data([0xFF, 0xD8, 0xFF]) }
         let result = try await service.enroll(animalID: "abc-123",
                                               muzzleJpegs: muzzles,
-                                              fullJpeg: Data([0xFF, 0xD8, 0xFF]))
+                                              fullJpegs: [Data([0xFF, 0xD8, 0xFF])])
 
         XCTAssertEqual(result.enrolledCount, 5)
         XCTAssertEqual(result.fullImagesStored, 1)

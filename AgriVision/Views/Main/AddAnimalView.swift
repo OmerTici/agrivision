@@ -6,9 +6,16 @@ struct AddAnimalScreen: View {
     @ObservedObject private var lang = LanguageManager.shared
     /// Switches to the My Herd (Animals) tab. Mirrors the Animals header's
     /// quick-jump button, in reverse.
-    var onOpenHerd: () -> Void = {}
+    let onOpenHerd: () -> Void
+    /// Muzzle carried in from the "not recognized" identify screen, if any. Seeds
+    /// the enrollment burst as scan 1 of 5.
+    let carriedMuzzleCrop: UIImage?
+    let carriedMuzzleFull: UIImage?
 
     private let repository = AnimalRepository()
+
+    static let muzzleTarget = 5
+    static let cowPhotoMax = 5
 
     @State private var name = ""
     @State private var tag = ""
@@ -16,17 +23,56 @@ struct AddAnimalScreen: View {
     @State private var sex: AnimalSex = .female
     @State private var birthDate = Calendar.current.date(byAdding: .year, value: -2, to: Date()) ?? Date()
     @State private var weightText = ""
-    @State private var muzzleScanned = false
-    @State private var showSavedToast = false
 
+    // Photos gathered for enrollment. The muzzle seed (0 or 1) is completed to 5
+    // in the enrollment camera after Save; profile + cow photos ride along as
+    // optional `full_images`.
+    @State private var muzzleCrop: UIImage?
+    @State private var muzzleFull: UIImage?
+    @State private var profilePhoto: UIImage?
+    @State private var cowPhotos: [UIImage] = []
+
+    @State private var showSavedToast = false
     @State private var isSaving = false
     @State private var saveError: String?
-    /// Set to the new animal id to trigger the enrollment camera.
-    @State private var enrollAnimalID: String?
+    @State private var activeCamera: ActiveCamera?
+
+    private enum ActiveCamera: Identifiable {
+        case profile
+        case cow
+        case enroll(String)
+        var id: String {
+            switch self {
+            case .profile: return "profile"
+            case .cow: return "cow"
+            case .enroll(let id): return "enroll-\(id)"
+            }
+        }
+    }
+
+    init(
+        onOpenHerd: @escaping () -> Void = {},
+        carriedMuzzleCrop: UIImage? = nil,
+        carriedMuzzleFull: UIImage? = nil
+    ) {
+        self.onOpenHerd = onOpenHerd
+        self.carriedMuzzleCrop = carriedMuzzleCrop
+        self.carriedMuzzleFull = carriedMuzzleFull
+        _muzzleCrop = State(initialValue: carriedMuzzleCrop)
+        _muzzleFull = State(initialValue: carriedMuzzleFull)
+    }
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && !tag.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Profile + cow body photos, in submission order.
+    private var extraFullFrames: [UIImage] {
+        var frames: [UIImage] = []
+        if let profilePhoto { frames.append(profilePhoto) }
+        frames.append(contentsOf: cowPhotos)
+        return frames
     }
 
     var body: some View {
@@ -34,7 +80,8 @@ struct AddAnimalScreen: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     header
-                    muzzleScanCard
+                    muzzleSection
+                    photosCard
                     detailsCard
                     saveButton
                 }
@@ -48,16 +95,39 @@ struct AddAnimalScreen: View {
                 savedToast
             }
         }
-        .fullScreenCover(item: $enrollAnimalID) { animalID in
-            CameraScreen(
-                onClose: {
-                    enrollAnimalID = nil
-                },
-                onEnrollSuccess: {
-                    store.markLastAddedMuzzleRegistered()
-                },
-                enrollAnimalID: animalID
-            )
+        .fullScreenCover(item: $activeCamera) { which in
+            switch which {
+            case .profile:
+                CameraScreen(
+                    onClose: { activeCamera = nil },
+                    frameCollection: FrameCollectionRequest(max: 1, titleKey: "camera.collect.profile"),
+                    onFramesCollected: { frames in
+                        if let first = frames.first { profilePhoto = first }
+                        activeCamera = nil
+                    }
+                )
+            case .cow:
+                CameraScreen(
+                    onClose: { activeCamera = nil },
+                    frameCollection: FrameCollectionRequest(
+                        max: max(1, Self.cowPhotoMax - cowPhotos.count),
+                        titleKey: "camera.collect.cow"
+                    ),
+                    onFramesCollected: { frames in
+                        cowPhotos.append(contentsOf: frames)
+                        activeCamera = nil
+                    }
+                )
+            case .enroll(let animalID):
+                CameraScreen(
+                    onClose: { finishAfterEnroll() },
+                    onEnrollSuccess: { store.markLastAddedMuzzleRegistered() },
+                    enrollAnimalID: animalID,
+                    enrollSeedCrops: muzzleCrop.map { [$0] } ?? [],
+                    enrollSeedFullFrame: muzzleFull,
+                    enrollExtraFullFrames: extraFullFrames
+                )
+            }
         }
     }
 
@@ -88,40 +158,172 @@ struct AddAnimalScreen: View {
         }
     }
 
-    private var muzzleScanCard: some View {
-        Button {
-            withAnimation(.spring(duration: 0.35)) { muzzleScanned.toggle() }
-        } label: {
-            VStack(spacing: 10) {
-                Image(systemName: muzzleScanned ? "checkmark.seal.fill" : "viewfinder")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(muzzleScanned ? AgriColors.successGreen : AgriColors.purple)
+    // MARK: Muzzle (required)
 
-                Text(lang.t(muzzleScanned ? "add.scanDone" : "add.scanPrompt"))
-                    .font(AgriFont.semibold(15))
-                    .foregroundStyle(muzzleScanned ? AgriColors.successGreen : AgriColors.purpleDark)
+    private var muzzleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(title: lang.t("add.muzzle.title"), required: true)
 
-                Text(lang.t(muzzleScanned ? "add.scanHintDone" : "add.scanHint"))
-                    .font(AgriFont.regular(12))
-                    .foregroundStyle(AgriColors.tabInactive)
-                    .multilineTextAlignment(.center)
+            if let muzzleCrop {
+                HStack(spacing: 12) {
+                    Image(uiImage: muzzleCrop)
+                        .resizable().scaledToFill()
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(lang.t("add.muzzle.seeded"))
+                            .font(AgriFont.semibold(14))
+                            .foregroundStyle(AgriColors.purpleDark)
+                        Text(lang.t("add.muzzle.seededHint"))
+                            .font(AgriFont.regular(12))
+                            .foregroundStyle(AgriColors.tabInactive)
+                    }
+                    Spacer()
+                    Button {
+                        self.muzzleCrop = nil
+                        self.muzzleFull = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(AgriColors.tabInactive)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Image(systemName: "viewfinder")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AgriColors.purple)
+                    Text(lang.t("add.muzzle.prompt"))
+                        .font(AgriFont.regular(13))
+                        .foregroundStyle(AgriColors.tabInactive)
+                }
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AgriColors.purple.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AgriColors.purple.opacity(0.4),
+                              style: StrokeStyle(lineWidth: 1.5, dash: muzzleCrop == nil ? [6, 5] : []))
+        )
+    }
+
+    // MARK: Optional photos (profile + cow body)
+
+    private var photosCard: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            // Profile photo (optional, 1)
+            VStack(alignment: .leading, spacing: 10) {
+                sectionHeader(title: lang.t("add.profile.title"), required: false)
+                if let profilePhoto {
+                    photoRow(image: profilePhoto, caption: lang.t("add.profile.captured")) {
+                        self.profilePhoto = nil
+                    }
+                } else {
+                    captureButton(label: lang.t("add.profile.add"), systemImage: "person.crop.square") {
+                        activeCamera = .profile
+                    }
+                }
+            }
+
+            Divider()
+
+            // Cow body photos (optional, up to 5)
+            VStack(alignment: .leading, spacing: 10) {
+                sectionHeader(
+                    title: "\(lang.t("add.cow.title"))  \(cowPhotos.count)/\(Self.cowPhotoMax)",
+                    required: false
+                )
+                if !cowPhotos.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Array(cowPhotos.enumerated()), id: \.offset) { idx, img in
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: img)
+                                        .resizable().scaledToFill()
+                                        .frame(width: 64, height: 64)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    Button {
+                                        cowPhotos.remove(at: idx)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundStyle(.white)
+                                            .background(Circle().fill(.black.opacity(0.5)))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(3)
+                                }
+                            }
+                        }
+                    }
+                }
+                if cowPhotos.count < Self.cowPhotoMax {
+                    captureButton(label: lang.t("add.cow.add"), systemImage: "camera") {
+                        activeCamera = .cow
+                    }
+                }
+            }
+        }
+        .agriCard()
+    }
+
+    private func sectionHeader(title: String, required: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(AgriFont.semibold(15))
+                .foregroundStyle(AgriColors.purpleDark)
+            Text(lang.t(required ? "add.required" : "add.optional"))
+                .font(AgriFont.semibold(11))
+                .foregroundStyle(required ? AgriColors.purple : AgriColors.tabInactive)
+                .padding(.vertical, 2).padding(.horizontal, 7)
+                .background(
+                    Capsule().fill((required ? AgriColors.purple : AgriColors.tabInactive).opacity(0.12))
+                )
+        }
+    }
+
+    private func captureButton(label: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(label)
+                    .font(AgriFont.semibold(14))
+            }
+            .foregroundStyle(AgriColors.purple)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 22)
-            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill((muzzleScanned ? AgriColors.successGreen : AgriColors.purple).opacity(0.06))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        (muzzleScanned ? AgriColors.successGreen : AgriColors.purple).opacity(0.45),
-                        style: StrokeStyle(lineWidth: 1.5, dash: muzzleScanned ? [] : [6, 5])
-                    )
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AgriColors.purple.opacity(0.08))
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func photoRow(image: UIImage, caption: String, onRemove: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            Image(uiImage: image)
+                .resizable().scaledToFill()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text(caption)
+                .font(AgriFont.semibold(14))
+                .foregroundStyle(AgriColors.purpleDark)
+            Spacer()
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(AgriColors.tabInactive)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var detailsCard: some View {
@@ -163,7 +365,7 @@ struct AddAnimalScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button(action: save) {
-                Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("add.save"))
+                Text(isSaving ? lang.t("camera.enroll.submitting") : lang.t("add.saveEnroll"))
                     .font(AgriFont.bold(16))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -175,6 +377,11 @@ struct AddAnimalScreen: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSave || isSaving)
+
+            Text(lang.t("add.saveEnrollHint"))
+                .font(AgriFont.regular(12))
+                .foregroundStyle(AgriColors.tabInactive)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -223,11 +430,9 @@ struct AddAnimalScreen: View {
                         muzzleRegistered: false
                     )
                     isSaving = false
-                    name = ""
-                    tag = ""
-                    weightText = ""
-                    muzzleScanned = false
-                    enrollAnimalID = created.id   // launches the enrollment camera
+                    // Launch the enrollment camera: completes the 5 muzzle scans and
+                    // submits them with the profile + cow photos gathered above.
+                    activeCamera = .enroll(created.id)
                 }
             } catch {
                 await MainActor.run {
@@ -235,6 +440,23 @@ struct AddAnimalScreen: View {
                     saveError = error.localizedDescription
                 }
             }
+        }
+    }
+
+    /// Resets the form after the enrollment camera closes (success or cancel) and
+    /// shows the saved toast.
+    private func finishAfterEnroll() {
+        activeCamera = nil
+        name = ""
+        tag = ""
+        weightText = ""
+        muzzleCrop = nil
+        muzzleFull = nil
+        profilePhoto = nil
+        cowPhotos = []
+        withAnimation(.spring(duration: 0.35)) { showSavedToast = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { showSavedToast = false }
         }
     }
 }
