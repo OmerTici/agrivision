@@ -303,6 +303,7 @@ struct AnimalDetailView: View {
                 topBar
                 identityCard
                 infoGrid
+                AnimalPhotosGallery(animalID: animal.id)
                 Button(role: .destructive) {
                     showDeleteConfirm = true
                 } label: {
@@ -441,6 +442,77 @@ struct AnimalDetailView: View {
             InfoTile(label: lang.t("detail.sex"), value: lang.t(animal.sex.key))
             InfoTile(label: lang.t("detail.age"), value: animal.ageDescription(lang))
             InfoTile(label: lang.t("detail.enrolled"), value: lang.shortDate(animal.createdAt))
+        }
+    }
+}
+
+/// Horizontal gallery of every enrolled image for an animal (full-body shots +
+/// muzzle crops), pulled from the private storage bucket. Hidden when empty.
+struct AnimalPhotosGallery: View {
+    let animalID: UUID
+    @ObservedObject private var lang = LanguageManager.shared
+    @State private var paths: [String] = []
+    @State private var images: [String: UIImage] = [:]
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            if !paths.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("\(lang.t("detail.photos"))  \(paths.count)")
+                        .font(AgriFont.semibold(15))
+                        .foregroundStyle(AgriColors.purpleDark)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(paths, id: \.self) { path in
+                                thumbnail(path)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .agriCard()
+            } else if loaded {
+                EmptyView()
+            }
+        }
+        .task(id: animalID) { await load() }
+    }
+
+    @ViewBuilder
+    private func thumbnail(_ path: String) -> some View {
+        ZStack {
+            if let image = images[path] {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AgriColors.purple.opacity(0.06))
+                ProgressView().tint(AgriColors.purple)
+            }
+        }
+        .frame(width: 96, height: 96)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .task {
+            if images[path] == nil {
+                images[path] = await AnimalPhotoLoader.shared.image(at: path)
+            }
+        }
+    }
+
+    private func load() async {
+        guard let ownerID = SupabaseClientProvider.shared.auth.currentSession?.user.id.uuidString else {
+            loaded = true
+            return
+        }
+        let result = await AnimalPhotoLoader.shared.allPhotoPaths(
+            ownerID: ownerID,
+            animalID: animalID.uuidString
+        )
+        await MainActor.run {
+            paths = result
+            loaded = true
         }
     }
 }

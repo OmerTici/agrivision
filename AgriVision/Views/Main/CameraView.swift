@@ -894,6 +894,9 @@ struct CameraScreen: View {
     /// it — bypasses the camera so screen-photo moiré can't corrupt the test.
     @State private var testPickerItem: PhotosPickerItem?
 
+    /// Yellow-orange used for the "unrecognized animal" prompt.
+    private static let unknownAmber = Color(red: 0.95, green: 0.62, blue: 0.18)
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -1380,10 +1383,19 @@ struct CameraScreen: View {
                         Text(lang.t("camera.identify.score", result.score * 100))
                             .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
                     } else {
-                        Image(systemName: "questionmark.circle.fill")
-                            .font(.system(size: 50)).foregroundStyle(.orange)
+                        ZStack {
+                            Circle()
+                                .fill(Self.unknownAmber.opacity(0.18))
+                                .frame(width: 96, height: 96)
+                            Image(systemName: "questionmark.circle.fill")
+                                .font(.system(size: 62))
+                                .foregroundStyle(Self.unknownAmber)
+                        }
                         Text(lang.t("camera.identify.unknown"))
-                            .font(AgriFont.bold(20)).foregroundStyle(.white)
+                            .font(AgriFont.bold(22)).foregroundStyle(.white)
+                        Text(lang.t("camera.identify.unknownPrompt"))
+                            .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
+                            .multilineTextAlignment(.center).padding(.horizontal, 24)
                         Button { onRequestEnroll(model.croppedMuzzle, model.lastPhoto) } label: {
                             Text(lang.t("camera.identify.enroll"))
                                 .font(AgriFont.semibold(16)).foregroundStyle(.white)

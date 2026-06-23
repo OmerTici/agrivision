@@ -70,6 +70,47 @@ final class AnimalPhotoLoader {
         return nil
     }
 
+    /// All enrolled image object paths for an animal — full-body shots first,
+    /// then muzzle crops — for the detail gallery. Empty on any failure.
+    func allPhotoPaths(ownerID: String, animalID: String) async -> [String] {
+        let owner = ownerID.lowercased()
+        var animalSegments = [animalID]
+        if animalID.lowercased() != animalID {
+            animalSegments.append(animalID.lowercased())
+        }
+        var paths: [String] = []
+        for kind in ["full", "muzzle"] {
+            for animal in animalSegments {
+                let prefix = "\(owner)/\(animal)/\(kind)"
+                guard let objects = try? await client.storage.from("muzzles").list(path: prefix) else {
+                    continue
+                }
+                for object in objects where object.name.hasSuffix(".jpg") {
+                    paths.append("\(prefix)/\(object.name)")
+                }
+            }
+        }
+        return paths
+    }
+
+    /// Downloads (and caches) a single image by its storage object path. Used by
+    /// the detail gallery; returns nil on any failure.
+    func image(at objectPath: String) async -> UIImage? {
+        let key = objectPath as NSString
+        if let cached = memoryCache.object(forKey: key) { return cached }
+        if let image = diskImage(for: objectPath) {
+            memoryCache.setObject(image, forKey: key)
+            return image
+        }
+        guard let data = try? await client.storage.from("muzzles").download(path: objectPath),
+              let image = UIImage(data: data) else {
+            return nil
+        }
+        memoryCache.setObject(image, forKey: key)
+        try? data.write(to: diskURL(for: objectPath), options: .atomic)
+        return image
+    }
+
     private func diskURL(for objectPath: String) -> URL {
         // "/" is not valid in a file name; flatten the object path.
         let name = objectPath.replacingOccurrences(of: "/", with: "_")
