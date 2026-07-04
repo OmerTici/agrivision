@@ -181,7 +181,12 @@ Both `recent(limit:)` and `page(offset:limit:animal:since:)`:
 
 ## Testing / verification
 
-No server test harness exists. Manual verification:
+Server: extend the existing pytest harness (`server/tests/test_api.py`, which
+already stubs `db.insert_event` via monkeypatch) — update the event-assertion
+tests to the new signature and add failure-row tests (invalid image 422,
+unowned animal 404, storage 502, model-not-loaded 503, unexpected 500).
+
+Manual verification:
 
 1. Apply the schema block in the Supabase SQL editor.
 2. Run the server locally, then:
