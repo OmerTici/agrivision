@@ -47,15 +47,27 @@ drop policy if exists "own embeddings" on embeddings;
 create policy "own embeddings" on embeddings
   for all using (owner = auth.uid()) with check (owner = auth.uid());
 
--- Action feed: one row per enroll/identify, written ONLY by the embedder
--- (service role). Owners read their own feed from the iOS app via PostgREST.
+-- Action feed + request telemetry: one row per enroll/identify request,
+-- INCLUDING failures, written ONLY by the embedder (service role). Owners
+-- read their own success rows from the iOS app via PostgREST (the app
+-- filters result to the success values and never selects detail).
 create table if not exists events (
   id          uuid primary key default gen_random_uuid(),
   owner       uuid references auth.users not null,
   kind        text not null check (kind in ('enroll', 'identify')),
-  animal_id   uuid references animals(id) on delete set null,  -- null for unknown identify
-  result      text not null check (result in ('enrolled', 'identified', 'unknown')),
+  animal_id   uuid references animals(id) on delete set null,  -- null for unknown identify and most failures
+  result      text not null check (result in (
+    'enrolled', 'identified', 'unknown',                       -- success (app feed)
+    'invalid_image', 'unowned_animal', 'storage_failed',       -- failures (telemetry only)
+    'model_not_loaded', 'error'
+  )),
   score       real,                                 -- top-1 similarity for identify, null for enroll
+  margin      real,                                 -- top1 - top2 similarity for identify
+  model_name  text,                                 -- embedding model that produced score/margin
+  http_status int,
+  total_ms    int,
+  request_id  text,
+  detail      jsonb not null default '{}',          -- timings, candidates, byte counts
   created_at  timestamptz not null default now()
 );
 create index if not exists events_owner_created_idx on events (owner, created_at desc);
