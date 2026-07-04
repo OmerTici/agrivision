@@ -8,6 +8,18 @@ from tests.conftest import TEST_UID
 ANIMAL = "22222222-2222-2222-2222-222222222222"
 
 
+def _capture_events(monkeypatch):
+    """Stub db.insert_event, returning the list it appends (args, kwargs) to."""
+    recorded = []
+
+    async def fake_insert_event(owner, kind, animal_id, result, score, **kw):
+        recorded.append({"owner": owner, "kind": kind, "animal_id": animal_id,
+                         "result": result, "score": score, **kw})
+
+    monkeypatch.setattr(main_mod.db, "insert_event", fake_insert_event)
+    return recorded
+
+
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
@@ -138,9 +150,10 @@ def test_enroll_with_full_images(client, jpeg_bytes, monkeypatch):
     assert sum("/full/" in p for p in uploads) == 2
 
 
-def test_enroll_writes_event(client, jpeg_bytes, monkeypatch):
-    recorded = []
+MODEL = "conservationxlabs/miewid-msv3@4f1d7f2b521149e5fe34bb85f377248ce9971a7d"
 
+
+def test_enroll_writes_event(client, jpeg_bytes, monkeypatch):
     async def fake_animal_owned(animal_id, owner):
         return True
 
@@ -150,60 +163,67 @@ def test_enroll_writes_event(client, jpeg_bytes, monkeypatch):
     async def fake_insert(animal_id, owner, vecs, image_paths):
         return len(image_paths)
 
-    async def fake_insert_event(owner, kind, animal_id, result, score):
-        recorded.append((owner, kind, animal_id, result, score))
-
     monkeypatch.setattr(main_mod.db, "animal_owned", fake_animal_owned)
     monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
     monkeypatch.setattr(main_mod.db, "insert_embeddings", fake_insert)
-    monkeypatch.setattr(main_mod.db, "insert_event", fake_insert_event)
+    recorded = _capture_events(monkeypatch)
 
     files = [("images", ("m.jpg", jpeg_bytes, "image/jpeg"))]
     r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
     assert r.status_code == 200
-    assert recorded == [(TEST_UID, "enroll", ANIMAL, "enrolled", None)]
+    (e,) = recorded
+    assert (e["owner"], e["kind"], e["animal_id"], e["result"], e["score"]) == (
+        TEST_UID, "enroll", ANIMAL, "enrolled", None,
+    )
+    assert e["http_status"] == 200
+    assert e["model_name"] == MODEL
+    assert e["detail"]["muzzle_count"] == 1
+    assert e["detail"]["enrolled_count"] == 1
+    assert "upload_ms" in e["detail"] and "embed_ms" in e["detail"] and "insert_ms" in e["detail"]
+    assert e["total_ms"] >= 0 and len(e["request_id"]) == 10
 
 
 def test_identify_identified_writes_event(client, jpeg_bytes, monkeypatch):
-    recorded = []
-
     async def fake_match(vec, owner):
         return [Candidate(ANIMAL, "Bessie", 0.91), Candidate("other", None, 0.60)]
 
-    async def fake_insert_event(owner, kind, animal_id, result, score):
-        recorded.append((owner, kind, animal_id, result, score))
-
     monkeypatch.setattr(main_mod.db, "match", fake_match)
-    monkeypatch.setattr(main_mod.db, "insert_event", fake_insert_event)
+    recorded = _capture_events(monkeypatch)
 
     r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
     assert r.status_code == 200
-    assert recorded == [(TEST_UID, "identify", ANIMAL, "identified", pytest.approx(0.91))]
+    (e,) = recorded
+    assert (e["owner"], e["kind"], e["animal_id"], e["result"]) == (
+        TEST_UID, "identify", ANIMAL, "identified",
+    )
+    assert e["score"] == pytest.approx(0.91)
+    assert e["margin"] == pytest.approx(0.31)
+    assert e["http_status"] == 200
+    assert e["model_name"] == MODEL
+    assert e["detail"]["candidate_count"] == 2
+    assert e["detail"]["candidates"][0]["sim"] == pytest.approx(0.91)
+    assert "embed_ms" in e["detail"] and "match_ms" in e["detail"]
 
 
 def test_identify_unknown_writes_event(client, jpeg_bytes, monkeypatch):
-    recorded = []
-
     async def fake_match(vec, owner):
         return []  # empty gallery -> unknown
 
-    async def fake_insert_event(owner, kind, animal_id, result, score):
-        recorded.append((owner, kind, animal_id, result, score))
-
     monkeypatch.setattr(main_mod.db, "match", fake_match)
-    monkeypatch.setattr(main_mod.db, "insert_event", fake_insert_event)
+    recorded = _capture_events(monkeypatch)
 
     r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
     assert r.status_code == 200
     assert r.json()["decision"] == "unknown"
-    assert recorded == [(TEST_UID, "identify", None, "unknown", pytest.approx(0.0))]
+    (e,) = recorded
+    assert (e["animal_id"], e["result"], e["http_status"]) == (None, "unknown", 200)
 
 
 def test_event_insert_failure_does_not_fail_response(client, jpeg_bytes, monkeypatch):
     async def fake_match(vec, owner):
         return []
 
-    async def exploding_insert_event(owner, kind, animal_id, result, score):
+    async def exploding_insert_event(*args, **kwargs):
         raise RuntimeError("db down")
 
     monkeypatch.setattr(main_mod.db, "match", fake_match)
@@ -212,3 +232,74 @@ def test_event_insert_failure_does_not_fail_response(client, jpeg_bytes, monkeyp
     r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
     assert r.status_code == 200
     assert r.json()["decision"] == "unknown"
+
+
+def test_identify_invalid_image_writes_failure_row(client, monkeypatch):
+    recorded = _capture_events(monkeypatch)
+    r = client.post("/identify", files={"image": ("m.jpg", b"not a jpeg", "image/jpeg")})
+    assert r.status_code == 422
+    (e,) = recorded
+    assert (e["kind"], e["result"], e["http_status"]) == ("identify", "invalid_image", 422)
+    assert e["animal_id"] is None and e["score"] is None
+    assert e["detail"]["error"] == "invalid image payload"
+    assert e["detail"]["image_bytes"] == len(b"not a jpeg")
+
+
+def test_identify_model_not_loaded_writes_failure_row(client, jpeg_bytes, monkeypatch):
+    recorded = _capture_events(monkeypatch)
+    main_mod.state["embedder"] = None  # client fixture restores this on teardown
+    r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
+    assert r.status_code == 503
+    (e,) = recorded
+    assert (e["result"], e["http_status"]) == ("model_not_loaded", 503)
+
+
+def test_identify_unexpected_error_writes_error_row(client, jpeg_bytes, monkeypatch):
+    async def exploding_match(vec, owner):
+        raise RuntimeError("pg down")
+
+    monkeypatch.setattr(main_mod.db, "match", exploding_match)
+    recorded = _capture_events(monkeypatch)
+    r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
+    assert r.status_code == 500
+    (e,) = recorded
+    assert (e["result"], e["http_status"]) == ("error", 500)
+    assert "RuntimeError" in e["detail"]["error"]
+
+
+def test_enroll_unowned_writes_failure_row(client, jpeg_bytes, monkeypatch):
+    async def fake_animal_owned(animal_id, owner):
+        return False
+
+    monkeypatch.setattr(main_mod.db, "animal_owned", fake_animal_owned)
+    recorded = _capture_events(monkeypatch)
+    files = [("images", ("m.jpg", jpeg_bytes, "image/jpeg"))]
+    r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
+    assert r.status_code == 404
+    (e,) = recorded
+    assert (e["kind"], e["result"], e["http_status"]) == ("enroll", "unowned_animal", 404)
+    # FK safety: the column stays NULL for an unverified id; it goes in detail.
+    assert e["animal_id"] is None
+    assert e["detail"]["animal_id_attempted"] == ANIMAL
+
+
+def test_enroll_storage_failure_writes_failure_row(client, jpeg_bytes, monkeypatch):
+    import httpx
+
+    async def fake_animal_owned(animal_id, owner):
+        return True
+
+    async def fake_upload(path, data):
+        raise httpx.HTTPStatusError(
+            "boom", request=httpx.Request("POST", "http://x"), response=httpx.Response(500)
+        )
+
+    monkeypatch.setattr(main_mod.db, "animal_owned", fake_animal_owned)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
+    recorded = _capture_events(monkeypatch)
+    files = [("images", ("m.jpg", jpeg_bytes, "image/jpeg"))]
+    r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
+    assert r.status_code == 502
+    (e,) = recorded
+    assert (e["result"], e["http_status"]) == ("storage_failed", 502)
+    assert e["animal_id"] == ANIMAL  # ownership was confirmed before the failure

@@ -8,6 +8,7 @@ codec registration needed, which also keeps the pooler happy.
 Matching is an exact scan by design (no vector index): pgvector caps HNSW at
 2000 dims (MiewID is 2152) and exact scan is ~0.2 ms at 1k vectors anyway."""
 import asyncio
+import json
 
 import asyncpg
 import numpy as np
@@ -82,13 +83,30 @@ async def insert_embeddings(
 
 
 INSERT_EVENT_SQL = """
-insert into events (owner, kind, animal_id, result, score)
-values ($1::uuid, $2, $3::uuid, $4, $5)
+insert into events (owner, kind, animal_id, result, score,
+                    model_name, margin, http_status, total_ms, request_id, detail)
+values ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
 """
 
 
 async def insert_event(
-    owner: str, kind: str, animal_id: str | None, result: str, score: float | None
+    owner: str,
+    kind: str,
+    animal_id: str | None,
+    result: str,
+    score: float | None,
+    *,
+    model_name: str | None = None,
+    margin: float | None = None,
+    http_status: int | None = None,
+    total_ms: int | None = None,
+    request_id: str | None = None,
+    detail: dict | None = None,
 ) -> None:
     pool = await get_pool()
-    await pool.execute(INSERT_EVENT_SQL, owner, kind, animal_id, result, score)
+    await pool.execute(
+        INSERT_EVENT_SQL,
+        owner, kind, animal_id, result, score,
+        model_name, margin, http_status, total_ms, request_id,
+        json.dumps(detail or {}),
+    )
