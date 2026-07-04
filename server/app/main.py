@@ -116,7 +116,8 @@ class _RequestLog:
             )
         except Exception:
             logger.exception(
-                "event insert failed (kind=%s, result=%s)", self.kind, self.result
+                "event insert failed (kind=%s, result=%s, request_id=%s)",
+                self.kind, self.result, self.request_id,
             )
 
 

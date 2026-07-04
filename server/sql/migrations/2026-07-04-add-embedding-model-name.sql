@@ -1,5 +1,8 @@
 -- Track which model/version produced each embedding. Vectors from different
 -- embedding spaces must never be compared directly.
+-- Applied live to mvp_agrivision as migration `embeddings_model_name` on
+-- 2026-07-04 (3-step add/backfill/set-not-null; equivalent end state to a
+-- single `add column ... not null default`).
 alter table embeddings add column if not exists model_name text;
 
 update embeddings
