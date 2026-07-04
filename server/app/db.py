@@ -43,14 +43,15 @@ select a.id::text as animal_id, a.name, max(1 - (e.vec <=> $1::vector)) as sim
 from embeddings e
 join animals a on a.id = e.animal_id and a.deleted_at is null
 where e.owner = $2::uuid
+  and e.model_name = $3
 group by a.id, a.name
 order by sim desc
 limit 5
 """
 
 INSERT_SQL = """
-insert into embeddings (animal_id, owner, vec, image_path)
-values ($1::uuid, $2::uuid, $3::vector, $4)
+insert into embeddings (animal_id, owner, vec, image_path, model_name)
+values ($1::uuid, $2::uuid, $3::vector, $4, $5)
 """
 
 ANIMAL_OWNED_SQL = "select 1 from animals where id = $1::uuid and owner = $2::uuid"
@@ -58,7 +59,7 @@ ANIMAL_OWNED_SQL = "select 1 from animals where id = $1::uuid and owner = $2::uu
 
 async def match(vec: np.ndarray, owner: str) -> list[Candidate]:
     pool = await get_pool()
-    rows = await pool.fetch(MATCH_SQL, vector_literal(vec), owner)
+    rows = await pool.fetch(MATCH_SQL, vector_literal(vec), owner, get_settings().embedding_model_name)
     return [Candidate(r["animal_id"], r["name"], float(r["sim"])) for r in rows]
 
 
@@ -71,8 +72,9 @@ async def insert_embeddings(
     animal_id: str, owner: str, vecs: np.ndarray, image_paths: list[str]
 ) -> int:
     pool = await get_pool()
+    model_name = get_settings().embedding_model_name
     args = [
-        (animal_id, owner, vector_literal(v), p)
+        (animal_id, owner, vector_literal(v), p, model_name)
         for v, p in zip(vecs, image_paths, strict=True)
     ]
     await pool.executemany(INSERT_SQL, args)

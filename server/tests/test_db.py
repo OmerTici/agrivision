@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app.db import MATCH_SQL, vector_literal
+from app.db import INSERT_SQL, MATCH_SQL, vector_literal
 
 
 def test_vector_literal_format():
@@ -27,6 +27,7 @@ def test_vector_literal_rejects_non_finite():
 
 def test_match_sql_is_owner_scoped_exact_scan():
     assert "e.owner = $2::uuid" in MATCH_SQL
+    assert "e.model_name = $3" in MATCH_SQL
     assert "<=>" in MATCH_SQL          # pgvector cosine distance
     assert "limit 5" in MATCH_SQL
 
@@ -34,3 +35,8 @@ def test_match_sql_is_owner_scoped_exact_scan():
 def test_match_sql_excludes_soft_deleted():
     # Archived animals (deleted_at set) must never be returned by identify.
     assert "a.deleted_at is null" in MATCH_SQL
+
+
+def test_insert_sql_records_model_name():
+    assert "model_name" in INSERT_SQL
+    assert "$5" in INSERT_SQL

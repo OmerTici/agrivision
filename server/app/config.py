@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # bakeoff suggested_threshold 0.7746 assumed ~15-image galleries).
     sim_threshold: float = 0.60
     sim_margin: float = 0.05
+    # Embedding-space identifier. Matching filters to this value because vectors
+    # from different model versions are not comparable. Change this only when
+    # deploying a new embedder and re-embedding enrolled animals.
+    embedding_model_name: str = (
+        "conservationxlabs/miewid-msv3@4f1d7f2b521149e5fe34bb85f377248ce9971a7d"
+    )
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

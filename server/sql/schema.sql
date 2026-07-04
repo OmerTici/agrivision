@@ -20,6 +20,7 @@ create table if not exists embeddings (
   id uuid primary key default gen_random_uuid(),
   animal_id uuid references animals(id) on delete cascade,
   owner uuid references auth.users not null,
+  model_name text not null default 'conservationxlabs/miewid-msv3@4f1d7f2b521149e5fe34bb85f377248ce9971a7d',
   vec vector(2152) not null,
   image_path text,
   created_at timestamptz default now()
@@ -31,6 +32,7 @@ create table if not exists embeddings (
 --   create index on embeddings using hnsw ((vec::halfvec(2152)) halfvec_cosine_ops);
 
 create index if not exists embeddings_owner_idx on embeddings (owner);
+create index if not exists embeddings_owner_model_idx on embeddings (owner, model_name);
 create index if not exists animals_owner_idx on animals (owner);
 
 -- RLS: defense-in-depth. The service filters by owner explicitly in SQL;
