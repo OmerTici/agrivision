@@ -55,6 +55,13 @@ enum EventAnimalFilter: Equatable {
 struct EventRepository {
     private let client: SupabaseClient
 
+    /// Result values that are user-visible feed entries. The events table also
+    /// holds failure telemetry rows (invalid_image, storage_failed, ...) that
+    /// the app must never render.
+    private static let feedResults = ["enrolled", "identified", "unknown"]
+    /// Feed queries never select telemetry columns (detail jsonb etc.).
+    private static let feedColumns = "id,kind,animal_id,result,score,created_at"
+
     init(client: SupabaseClient = SupabaseClientProvider.shared) {
         self.client = client
     }
@@ -63,7 +70,8 @@ struct EventRepository {
     func recent(limit: Int) async throws -> [EventRecord] {
         let response = try await client
             .from("events")
-            .select()
+            .select(Self.feedColumns)
+            .in("result", values: Self.feedResults)
             .order("created_at", ascending: false)
             .limit(limit)
             .execute()
@@ -74,7 +82,8 @@ struct EventRepository {
     /// server-side so pagination stays correct under filters. `range` is
     /// inclusive: offset..<offset+limit.
     func page(offset: Int, limit: Int, animal: EventAnimalFilter, since: Date?) async throws -> [EventRecord] {
-        var query = client.from("events").select()
+        var query = client.from("events").select(Self.feedColumns)
+            .in("result", values: Self.feedResults)
         switch animal {
         case .all: break
         case .specific(let id): query = query.eq("animal_id", value: id.uuidString)
