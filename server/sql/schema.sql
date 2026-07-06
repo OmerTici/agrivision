@@ -6,14 +6,21 @@ create table if not exists animals (
   owner uuid references auth.users not null,
   name text, tag text, breed text, sex text,
   birth_date date, status text,
+  -- Storage object path of the user-chosen profile photo (one of the animal's
+  -- full/ images). Null = fall back to the first full image.
+  profile_path text,
   deleted_at timestamptz,
   created_at timestamptz default now()
 );
+
+-- Migration for existing databases (safe to re-run):
+alter table animals add column if not exists profile_path text;
 
 create table if not exists embeddings (
   id uuid primary key default gen_random_uuid(),
   animal_id uuid references animals(id) on delete cascade,
   owner uuid references auth.users not null,
+  model_name text not null default 'conservationxlabs/miewid-msv3@4f1d7f2b521149e5fe34bb85f377248ce9971a7d',
   vec vector(2152) not null,
   image_path text,
   created_at timestamptz default now()
@@ -25,6 +32,13 @@ create table if not exists embeddings (
 --   create index on embeddings using hnsw ((vec::halfvec(2152)) halfvec_cosine_ops);
 
 create index if not exists embeddings_owner_idx on embeddings (owner);
+create index if not exists embeddings_owner_model_idx on embeddings (owner, model_name);
+
+-- Migration for existing databases (safe to re-run; full version with backfill
+-- in sql/migrations/2026-07-04-add-embedding-model-name.sql):
+alter table embeddings add column if not exists model_name text not null
+  default 'conservationxlabs/miewid-msv3@4f1d7f2b521149e5fe34bb85f377248ce9971a7d';
+
 create index if not exists animals_owner_idx on animals (owner);
 
 -- RLS: defense-in-depth. The service filters by owner explicitly in SQL;
@@ -39,18 +53,45 @@ drop policy if exists "own embeddings" on embeddings;
 create policy "own embeddings" on embeddings
   for all using (owner = auth.uid()) with check (owner = auth.uid());
 
--- Action feed: one row per enroll/identify, written ONLY by the embedder
--- (service role). Owners read their own feed from the iOS app via PostgREST.
+-- Action feed + request telemetry: one row per enroll/identify request,
+-- INCLUDING failures, written ONLY by the embedder (service role). Owners
+-- read their own success rows from the iOS app via PostgREST (the app
+-- filters result to the success values and never selects detail).
 create table if not exists events (
   id          uuid primary key default gen_random_uuid(),
   owner       uuid references auth.users not null,
   kind        text not null check (kind in ('enroll', 'identify')),
-  animal_id   uuid references animals(id) on delete set null,  -- null for unknown identify
-  result      text not null check (result in ('enrolled', 'identified', 'unknown')),
+  animal_id   uuid references animals(id) on delete set null,  -- null for unknown identify and most failures
+  result      text not null check (result in (
+    'enrolled', 'identified', 'unknown',                       -- success (app feed)
+    'invalid_image', 'unowned_animal', 'storage_failed',       -- failures (telemetry only)
+    'model_not_loaded', 'error'
+  )),
   score       real,                                 -- top-1 similarity for identify, null for enroll
+  margin      real,                                 -- top1 - top2 similarity for identify
+  model_name  text,                                 -- embedding model that produced score/margin
+  http_status int,
+  total_ms    int,
+  request_id  text,
+  detail      jsonb not null default '{}',          -- timings, candidates, byte counts
   created_at  timestamptz not null default now()
 );
 create index if not exists events_owner_created_idx on events (owner, created_at desc);
+
+-- Migration for existing databases (safe to re-run; also in
+-- sql/migrations/2026-07-04-events-telemetry.sql):
+alter table events add column if not exists model_name  text;
+alter table events add column if not exists margin      real;
+alter table events add column if not exists http_status int;
+alter table events add column if not exists total_ms    int;
+alter table events add column if not exists request_id  text;
+alter table events add column if not exists detail      jsonb not null default '{}';
+alter table events drop constraint if exists events_result_check;
+alter table events add constraint events_result_check check (result in (
+  'enrolled', 'identified', 'unknown',
+  'invalid_image', 'unowned_animal', 'storage_failed',
+  'model_not_loaded', 'error'
+));
 
 alter table events enable row level security;
 

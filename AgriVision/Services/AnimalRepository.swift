@@ -59,13 +59,15 @@ struct AnimalRecord: Identifiable, Decodable {
     let birthDate: Date?
     let createdAt: Date
     let embeddingCount: Int
+    /// Storage path of the user-chosen profile photo (nil = first full image).
+    let profilePath: String?
 
     /// Derived, never a locally flipped flag: registered == embeddings exist.
     var muzzleRegistered: Bool { embeddingCount > 0 }
 
     init(
         id: UUID, name: String?, tag: String?, breed: String?, sex: String?,
-        birthDate: Date?, createdAt: Date, embeddingCount: Int
+        birthDate: Date?, createdAt: Date, embeddingCount: Int, profilePath: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -75,12 +77,14 @@ struct AnimalRecord: Identifiable, Decodable {
         self.birthDate = birthDate
         self.createdAt = createdAt
         self.embeddingCount = embeddingCount
+        self.profilePath = profilePath
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, tag, breed, sex, embeddings
         case birthDate = "birth_date"
         case createdAt = "created_at"
+        case profilePath = "profile_path"
     }
 
     private struct EmbeddingCount: Decodable { let count: Int }
@@ -104,6 +108,7 @@ struct AnimalRecord: Identifiable, Decodable {
         createdAt = created
         embeddingCount = (try c.decodeIfPresent([EmbeddingCount].self, forKey: .embeddings))?
             .first?.count ?? 0
+        profilePath = try c.decodeIfPresent(String.self, forKey: .profilePath)
     }
 }
 
@@ -227,6 +232,17 @@ struct AnimalRepository {
         try await client
             .from("animals")
             .update(payload)
+            .eq("id", value: animalID)
+            .execute()
+    }
+
+    /// Sets the animal's chosen profile photo (a storage object path). RLS scopes
+    /// the PATCH to the owner.
+    func setProfilePath(animalID: String, path: String) async throws {
+        struct ProfilePayload: Encodable { let profile_path: String }
+        try await client
+            .from("animals")
+            .update(ProfilePayload(profile_path: path))
             .eq("id", value: animalID)
             .execute()
     }

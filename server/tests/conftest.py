@@ -24,7 +24,7 @@ def client(monkeypatch):
     state["embedder"] = FakeEmbedder()
     app.dependency_overrides[current_uid] = lambda: TEST_UID
 
-    async def _noop_insert_event(owner, kind, animal_id, result, score):
+    async def _noop_insert_event(*args, **kwargs):
         return None
 
     # Unit tests never touch Postgres; event-asserting tests re-stub this.

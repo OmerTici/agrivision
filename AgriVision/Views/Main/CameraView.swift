@@ -56,6 +56,12 @@ final class CameraModel: NSObject, ObservableObject {
     enum Purpose: Equatable {
         case identify
         case enroll(animalID: String)
+        /// Hub mode: cow-gated muzzle scans (with crop) handed back to the
+        /// Add-Animal screen instead of being submitted here.
+        case collectMuzzles
+        /// Hub mode: ungated full-frame snaps (profile / cow body) handed back to
+        /// the Add-Animal screen. No cow gate, no muzzle crop — just a shutter.
+        case collectFrames
     }
 
     /// Phase within an enrollment session.
@@ -86,6 +92,19 @@ final class CameraModel: NSObject, ObservableObject {
     /// current burst — uploaded as the animal's "full" photo so it always shows
     /// the exact frame the on-device pipeline processed (main-thread only).
     private var enrollFullFrame: (confidence: Float, image: UIImage)?
+    /// Optional full-frame photos gathered on the Add-Animal hub (profile + cow
+    /// body) and submitted alongside the muzzle burst as `full_images`.
+    private var extraFullFrames: [UIImage] = []
+    /// Most images a collection session may gather before auto-finishing.
+    private var collectTarget = 1
+    /// Flipped true (on main) when a collection session reaches its target.
+    /// The view observes this to hand the images back and dismiss.
+    @Published var collectComplete = false
+    /// True during ungated frame collection: the shutter fires on tap with no cow
+    /// gate (profile / cow body photos are quality-of-life, not matched).
+    @Published private(set) var ungatedCapture = false
+    /// The best full frame from a `collectMuzzles` session, returned to the hub.
+    var collectedBestFull: UIImage? { enrollFullFrame?.image }
     /// Network/identify error message key or text for the result card.
     @Published var recognitionError: String?
 
@@ -329,7 +348,8 @@ final class CameraModel: NSObject, ObservableObject {
     }
 
     func capturePhoto() {
-        if captureMode == .manual && !canManualCapture { return }
+        // Ungated frame collection ignores the cow gate — the shutter always fires.
+        if captureMode == .manual && !canManualCapture && !ungatedCapture { return }
         if isContacting { return }
 
         videoQueue.async { [weak self] in
@@ -364,6 +384,13 @@ final class CameraModel: NSObject, ObservableObject {
 
             guard let cgImage = image?.normalizedCGImage() else {
                 self.finishFailure("camera.fail.read", confidence: "")
+                return
+            }
+
+            // Hub frame collection (profile / cow body): the live cow gate already
+            // vouched for the frame, so accept the full image with no muzzle crop.
+            if case .collectFrames = self.purpose {
+                self.finishFrameSuccess(frame: image)
                 return
             }
 
@@ -407,6 +434,41 @@ final class CameraModel: NSObject, ObservableObject {
                     // Re-arm for the next crop in the burst.
                     self.rearmForNextEnrollCrop()
                 }
+            case .collectMuzzles:
+                self.collectedCrops.append(crop)
+                if let fullFrame, confidence > (self.enrollFullFrame?.confidence ?? 0) {
+                    self.enrollFullFrame = (confidence, fullFrame)
+                }
+                if self.collectedCrops.count >= self.collectTarget {
+                    self.collectComplete = true
+                } else {
+                    self.rearmForNextEnrollCrop()
+                }
+            case .collectFrames:
+                // Frame collection runs through finishFrameSuccess, not here.
+                break
+            }
+        }
+    }
+
+    /// Accepts a full frame during a `collectFrames` hub session. Appends it to
+    /// `collectedCrops` (reused as the generic image buffer) and either finishes
+    /// the session at the target or re-arms for the next shot.
+    private func finishFrameSuccess(frame: UIImage?) {
+        DispatchQueue.main.async {
+            guard let frame else {
+                self.finishFailure("camera.fail.read", confidence: "")
+                return
+            }
+            self.croppedMuzzle = nil
+            self.isProcessing = false
+            self.captureFailed = false
+            self.failureMessage = ""
+            self.collectedCrops.append(frame)
+            if self.collectedCrops.count >= self.collectTarget {
+                self.collectComplete = true
+            } else {
+                self.rearmForNextEnrollCrop()
             }
         }
     }
@@ -442,12 +504,52 @@ final class CameraModel: NSObject, ObservableObject {
     // MARK: Enrollment / identify orchestration
 
     /// Switches the model into enrollment mode for a specific animal.
-    func beginEnrollment(animalID: String) {
+    ///
+    /// - Parameters:
+    ///   - seedCrops: muzzle crops already gathered (e.g. the one carried in from
+    ///     the "not recognized" screen). These count toward `enrollTarget`, so a
+    ///     single seed means the burst only needs four more.
+    ///   - seedFullFrame: the full frame behind the seed crop, used as a fallback
+    ///     "full" photo if no later burst frame scores higher.
+    ///   - extraFullFrames: optional profile + cow body photos gathered on the
+    ///     hub; submitted as `full_images` alongside the muzzle burst.
+    func beginEnrollment(
+        animalID: String,
+        seedCrops: [UIImage] = [],
+        seedFullFrame: UIImage? = nil,
+        extraFullFrames: [UIImage] = []
+    ) {
         DispatchQueue.main.async {
             self.purpose = .enroll(animalID: animalID)
+            self.ungatedCapture = false
+            self.collectedCrops = seedCrops
+            self.enrollFullFrame = seedFullFrame.map { (0, $0) }
+            self.extraFullFrames = extraFullFrames
+            self.enrollPhase = .collectingMuzzles
+            self.identifyResult = nil
+            self.recognitionError = nil
+            self.captureSucceeded = false
+            self.captureFailed = false
+            // A seed may already satisfy the target (shouldn't normally, but stay safe).
+            if self.collectedCrops.count >= Self.enrollTarget {
+                self.readyToSubmit = true
+            }
+        }
+        resetLiveDetectionState()
+        DispatchQueue.main.async { self.scanAgain() }
+    }
+
+    /// Switches the model into hub muzzle-collection mode: cow-gated muzzle scans
+    /// (with crop) that are handed back to the Add-Animal hub. Gathers up to `max`.
+    func beginMuzzleCollection(max: Int) {
+        DispatchQueue.main.async {
+            self.purpose = .collectMuzzles
+            self.ungatedCapture = false
+            self.collectTarget = Swift.max(1, max)
             self.collectedCrops = []
             self.enrollFullFrame = nil
-            self.enrollPhase = .collectingMuzzles
+            self.extraFullFrames = []
+            self.collectComplete = false
             self.identifyResult = nil
             self.recognitionError = nil
             self.captureSucceeded = false
@@ -455,6 +557,34 @@ final class CameraModel: NSObject, ObservableObject {
         }
         resetLiveDetectionState()
         DispatchQueue.main.async { self.scanAgain() }
+    }
+
+    /// Switches the model into hub frame-collection mode (profile / cow body).
+    /// Ungated: forces manual mode and fires the shutter on tap with no cow gate.
+    /// Gathers up to `max` full frames, then sets `collectComplete`.
+    func beginFrameCollection(max: Int) {
+        DispatchQueue.main.async {
+            self.purpose = .collectFrames
+            self.ungatedCapture = true
+            self.captureMode = .manual
+            self.collectTarget = Swift.max(1, max)
+            self.collectedCrops = []
+            self.enrollFullFrame = nil
+            self.extraFullFrames = []
+            self.collectComplete = false
+            self.identifyResult = nil
+            self.recognitionError = nil
+            self.captureSucceeded = false
+            self.captureFailed = false
+        }
+        resetLiveDetectionState()
+        DispatchQueue.main.async { self.scanAgain() }
+    }
+
+    /// Ends a `collectFrames` session early (the user tapped Done) with whatever
+    /// frames have been gathered so far.
+    func finalizeFrameCollection() {
+        DispatchQueue.main.async { self.collectComplete = true }
     }
 
     /// Submits the collected crops + full-body to the recognition service.
@@ -467,7 +597,13 @@ final class CameraModel: NSObject, ObservableObject {
         defer { isContacting = false }
 
         let muzzleJpegs = collectedCrops.compactMap { ImageEncoding.muzzleJPEG($0) }
-        let fullJpeg = enrollFullFrame.flatMap { ImageEncoding.fullBodyJPEG($0.image) }
+        // The best burst frame plus any hub photos (profile + cow body) all ride
+        // along as `full_images`.
+        var fullJpegs: [Data] = []
+        if let best = enrollFullFrame.flatMap({ ImageEncoding.fullBodyJPEG($0.image) }) {
+            fullJpegs.append(best)
+        }
+        fullJpegs.append(contentsOf: extraFullFrames.compactMap { ImageEncoding.fullBodyJPEG($0) })
         guard muzzleJpegs.count == collectedCrops.count, !muzzleJpegs.isEmpty else {
             recognitionError = Self.localizedRecognitionMessage(for: RecognitionError.encoding)
             enrollPhase = .failed
@@ -476,7 +612,7 @@ final class CameraModel: NSObject, ObservableObject {
         do {
             _ = try await service.enroll(animalID: animalID,
                                          muzzleJpegs: muzzleJpegs,
-                                         fullJpeg: fullJpeg)
+                                         fullJpegs: fullJpegs)
             enrollPhase = .done
         } catch {
             recognitionError = Self.localizedRecognitionMessage(for: error)
@@ -523,6 +659,7 @@ final class CameraModel: NSObject, ObservableObject {
     func releaseCapturedImages() {
         collectedCrops = []
         enrollFullFrame = nil
+        extraFullFrames = []
         lastPhoto = nil
     }
 
@@ -711,14 +848,41 @@ struct CameraPreviewView: UIViewRepresentable {
     func updateUIView(_ uiView: CameraPreviewUIView, context: Context) {}
 }
 
+/// Configures CameraScreen to gather images for the Add-Animal hub and hand them
+/// back, instead of identifying/enrolling.
+struct CameraCollectionRequest: Equatable {
+    enum Kind { case muzzle, frame }
+    /// `.muzzle` = cow-gated scans with a muzzle crop; `.frame` = ungated snaps.
+    let kind: Kind
+    /// Most images to gather before the session auto-finishes.
+    let max: Int
+    /// Localization key for the on-screen counter label (e.g. "camera.collect.cow").
+    let titleKey: String
+}
+
 struct CameraScreen: View {
     var onClose: () -> Void = {}
     /// Called after a successful enrollment (`.done` state). Fires before `onClose`.
     var onEnrollSuccess: () -> Void = {}
     /// When set, the camera runs an enrollment session for this animal.
     var enrollAnimalID: String? = nil
-    /// Called when an unknown identify result's "Enroll" button is tapped.
-    var onRequestEnroll: () -> Void = {}
+    /// Muzzle crops to seed the enrollment burst with (e.g. the one carried in
+    /// from the "not recognized" screen). Counts toward the 5 required scans.
+    var enrollSeedCrops: [UIImage] = []
+    /// Full frame behind the seed crop, used as a fallback "full" photo.
+    var enrollSeedFullFrame: UIImage? = nil
+    /// Optional profile + cow body photos gathered on the hub, submitted as
+    /// `full_images` with the muzzle burst.
+    var enrollExtraFullFrames: [UIImage] = []
+    /// When set, the camera gathers images (muzzle scans or ungated frames) and
+    /// returns them instead of identifying or enrolling.
+    var collection: CameraCollectionRequest? = nil
+    /// Delivers the gathered images (and best full frame, for muzzle collection)
+    /// when a collection session finishes.
+    var onCollected: (_ images: [UIImage], _ bestFull: UIImage?) -> Void = { _, _ in }
+    /// Called when an unknown identify result's "Enroll" button is tapped. Passes
+    /// the just-captured muzzle crop and its full frame so enrollment can reuse them.
+    var onRequestEnroll: (_ muzzleCrop: UIImage?, _ fullFrame: UIImage?) -> Void = { _, _ in }
 
     @EnvironmentObject private var recognition: CloudRunRecognitionService
     @StateObject private var model = CameraModel()
@@ -729,6 +893,9 @@ struct CameraScreen: View {
     /// Debug/testing: pick an image from the library and run the real models on
     /// it — bypasses the camera so screen-photo moiré can't corrupt the test.
     @State private var testPickerItem: PhotosPickerItem?
+
+    /// Yellow-orange used for the "unrecognized animal" prompt.
+    private static let unknownAmber = Color(red: 0.95, green: 0.62, blue: 0.18)
 
     var body: some View {
         ZStack {
@@ -764,7 +931,8 @@ struct CameraScreen: View {
                         .id(countdown)
                 }
 
-                if model.captureMode == .automatic || model.captureMode == .manual || model.isProcessing {
+                if !model.ungatedCapture,
+                   model.captureMode == .automatic || model.captureMode == .manual || model.isProcessing {
                     VStack {
                         Spacer()
                         Text(model.isProcessing ? lang.t("camera.analyzing") : lang.t(model.debugReadout))
@@ -790,11 +958,16 @@ struct CameraScreen: View {
                 resultOverlay
             }
 
-            if enrollAnimalID != nil {
+            if let req = collection {
+                collectionOverlay(req)
+            }
+
+            if collection == nil, enrollAnimalID != nil {
                 enrollmentOverlay
             }
 
-            if enrollAnimalID == nil, model.identifyResult != nil || model.recognitionError != nil {
+            if collection == nil, enrollAnimalID == nil,
+               model.identifyResult != nil || model.recognitionError != nil {
                 identifyOverlay
             }
 
@@ -804,17 +977,31 @@ struct CameraScreen: View {
         }
         .onAppear {
             model.start()
-            if let id = enrollAnimalID {
-                model.beginEnrollment(animalID: id)
+            if let req = collection {
+                switch req.kind {
+                case .muzzle: model.beginMuzzleCollection(max: req.max)
+                case .frame: model.beginFrameCollection(max: req.max)
+                }
+            } else if let id = enrollAnimalID {
+                model.beginEnrollment(animalID: id,
+                                      seedCrops: enrollSeedCrops,
+                                      seedFullFrame: enrollSeedFullFrame,
+                                      extraFullFrames: enrollExtraFullFrames)
             }
         }
         .onDisappear { model.stop() }
+        .onChange(of: model.collectComplete) { _, done in
+            guard done else { return }
+            model.collectComplete = false
+            onCollected(model.collectedCrops, model.collectedBestFull)
+            onClose()
+        }
         .onChange(of: model.captureSucceeded) { _, succeeded in
             guard succeeded else { return }
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
             // Identify mode: as soon as a crop is captured, ask the server.
-            if enrollAnimalID == nil {
+            if collection == nil, enrollAnimalID == nil {
                 Task { await model.runIdentify(using: recognition) }
             }
         }
@@ -908,7 +1095,9 @@ struct CameraScreen: View {
             .padding(.horizontal, 20)
             .padding(.top, 12)
 
-            if model.status == .authorized && !model.showsResultOverlay {
+            // No mode toggle during ungated frame collection — there's no cow gate,
+            // so "Automatic" has nothing to trigger on.
+            if model.status == .authorized && !model.showsResultOverlay && !model.ungatedCapture {
                 captureModePicker
                     .padding(.horizontal, 40)
                     .padding(.top, 16)
@@ -932,8 +1121,8 @@ struct CameraScreen: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .disabled(model.isProcessing || !model.canManualCapture || model.isContacting)
-                .opacity(model.canManualCapture && !model.isProcessing && !model.isContacting ? 1 : 0.35)
+                .disabled(model.isProcessing || (!model.canManualCapture && !model.ungatedCapture) || model.isContacting)
+                .opacity((model.canManualCapture || model.ungatedCapture) && !model.isProcessing && !model.isContacting ? 1 : 0.35)
                 .padding(.bottom, 36)
             }
         }
@@ -1143,6 +1332,42 @@ struct CameraScreen: View {
         }
     }
 
+    // MARK: Collection overlay (Add-Animal hub)
+
+    @ViewBuilder
+    private func collectionOverlay(_ req: CameraCollectionRequest) -> some View {
+        VStack {
+            Text("\(lang.t(req.titleKey))  \(model.collectedCrops.count)/\(req.max)")
+                .font(AgriFont.semibold(15))
+                .foregroundStyle(.white)
+                .padding(.vertical, 8).padding(.horizontal, 16)
+                .background(Capsule().fill(Color.black.opacity(0.55)))
+                .padding(.top, 64)
+
+            Spacer()
+
+            // Frame collection (profile / cow body) is user-ended; muzzle scans
+            // auto-finish at the target, so no Done button there.
+            if req.kind == .frame {
+                HStack {
+                    Spacer()
+                    Button { model.finalizeFrameCollection() } label: {
+                        Text(lang.t("camera.collect.done"))
+                            .font(AgriFont.semibold(16))
+                            .foregroundStyle(model.collectedCrops.isEmpty ? .white.opacity(0.6) : AgriColors.purple)
+                            .padding(.vertical, 12).padding(.horizontal, 28)
+                            .background(model.collectedCrops.isEmpty ? Color.black.opacity(0.45) : Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.collectedCrops.isEmpty)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 40)
+                }
+            }
+        }
+    }
+
     // MARK: Identify overlay
 
     @ViewBuilder
@@ -1152,41 +1377,74 @@ struct CameraScreen: View {
                 if let result = model.identifyResult {
                     if result.isIdentified {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 50)).foregroundStyle(AgriColors.successGreen)
+                            .font(.system(size: 54)).foregroundStyle(AgriColors.successGreen)
                         Text(result.name ?? lang.t("camera.identify.identified"))
-                            .font(AgriFont.bold(22)).foregroundStyle(.white)
+                            .font(AgriFont.bold(22)).foregroundStyle(AgriColors.purpleDark)
                         Text(lang.t("camera.identify.score", result.score * 100))
-                            .font(AgriFont.regular(15)).foregroundStyle(.white.opacity(0.85))
+                            .font(AgriFont.regular(15)).foregroundStyle(AgriColors.tabInactive)
+                        secondaryButton(lang.t("camera.scanAgain")) { model.resetRecognition() }
                     } else {
-                        Image(systemName: "questionmark.circle.fill")
-                            .font(.system(size: 50)).foregroundStyle(.orange)
-                        Text(lang.t("camera.identify.unknown"))
-                            .font(AgriFont.bold(20)).foregroundStyle(.white)
-                        Button { onRequestEnroll() } label: {
-                            Text(lang.t("camera.identify.enroll"))
-                                .font(AgriFont.semibold(16)).foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13).background(AgriColors.purple)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        ZStack {
+                            Circle()
+                                .fill(Self.unknownAmber.opacity(0.16))
+                                .frame(width: 92, height: 92)
+                            Image(systemName: "questionmark.circle.fill")
+                                .font(.system(size: 58))
+                                .foregroundStyle(Self.unknownAmber)
                         }
-                        .buttonStyle(.plain).padding(.horizontal, 24)
+                        Text(lang.t("camera.identify.unknown"))
+                            .font(AgriFont.bold(21)).foregroundStyle(AgriColors.purpleDark)
+                        Text(lang.t("camera.identify.unknownPrompt"))
+                            .font(AgriFont.regular(15)).foregroundStyle(AgriColors.tabInactive)
+                            .multilineTextAlignment(.center)
+                        primaryButton(lang.t("camera.identify.enroll")) {
+                            onRequestEnroll(model.croppedMuzzle, model.lastPhoto)
+                        }
+                        secondaryButton(lang.t("camera.scanAgain")) { model.resetRecognition() }
                     }
                 } else if model.recognitionError != nil {
                     Image(systemName: "wifi.slash")
-                        .font(.system(size: 44)).foregroundStyle(.white)
+                        .font(.system(size: 46)).foregroundStyle(AgriColors.tabInactive)
                     Text(lang.t("camera.identify.offline"))
-                        .font(AgriFont.semibold(16)).foregroundStyle(.white)
+                        .font(AgriFont.semibold(16)).foregroundStyle(AgriColors.purpleDark)
+                    secondaryButton(lang.t("camera.scanAgain")) { model.resetRecognition() }
                 }
-
-                Button { model.resetRecognition() } label: {
-                    Text(lang.t("camera.scanAgain"))
-                        .font(AgriFont.semibold(15)).foregroundStyle(.white.opacity(0.9))
-                        .padding(.vertical, 10).padding(.horizontal, 30)
-                        .overlay(Capsule().stroke(.white.opacity(0.5), lineWidth: 1))
-                }
-                .buttonStyle(.plain)
             }
+            .padding(24)
+            .frame(maxWidth: 320)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(AgriColors.white)
+            )
+            .padding(.horizontal, 40)
         }
+    }
+
+    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(AgriFont.semibold(16)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(AgriColors.purple)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func secondaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(AgriFont.semibold(16)).foregroundStyle(AgriColors.purple)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(AgriColors.purple.opacity(0.4), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private var wakingBanner: some View {

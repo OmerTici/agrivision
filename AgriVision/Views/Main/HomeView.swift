@@ -63,6 +63,8 @@ struct AnimalPhotoView: View {
     let name: String
     let color: Color
     var size: CGFloat = 48
+    /// Chosen profile photo path; nil falls back to the first stored image.
+    var profilePath: String? = nil
 
     @State private var image: UIImage?
 
@@ -78,16 +80,20 @@ struct AnimalPhotoView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .task(id: animalID) {
+        .task(id: taskID) {
             guard let animalID,
                   let ownerID = SupabaseClientProvider.shared.auth.currentSession?.user.id.uuidString
             else { return }
             image = await AnimalPhotoLoader.shared.photo(
                 ownerID: ownerID,
-                animalID: animalID.uuidString
+                animalID: animalID.uuidString,
+                profilePath: profilePath
             )
         }
     }
+
+    /// Re-run the load when either the animal or its chosen profile changes.
+    private var taskID: String { "\(animalID?.uuidString ?? "")|\(profilePath ?? "")" }
 }
 
 /// Inline failure banner with a Retry button, shown when HerdStore.load() fails.
@@ -125,26 +131,30 @@ struct HomeScreen: View {
     var onOpenSettings: () -> Void = {}
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                if let error = store.loadError {
-                    LoadErrorBanner(message: error) {
-                        Task { await store.load() }
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    header
+                    if let error = store.loadError {
+                        LoadErrorBanner(message: error) {
+                            Task { await store.load() }
+                        }
+                    }
+                    if store.isLoading && store.animals.isEmpty && store.events.isEmpty {
+                        loadingState
+                    } else {
+                        statsGrid
+                        recentActionsSection
                     }
                 }
-                if store.isLoading && store.animals.isEmpty && store.events.isEmpty {
-                    loadingState
-                } else {
-                    statsGrid
-                    recentActionsSection
-                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, AgriLayout.tabBarClearance)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, AgriLayout.tabBarClearance)
+            .refreshable { await store.load() }
+            .background(AgriColors.appBackground)
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .refreshable { await store.load() }
     }
 
     private var greeting: String {
@@ -224,18 +234,34 @@ struct HomeScreen: View {
 
     private var recentActionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(
-                title: lang.t("home.recentActions"),
-                actionTitle: lang.t("home.seeAll"),
-                action: onSeeAllAnimals
-            )
+            HStack {
+                Text(lang.t("home.recentActions"))
+                    .font(AgriFont.bold(18))
+                    .foregroundStyle(AgriColors.purpleDark)
+                Spacer()
+                if !store.events.isEmpty {
+                    NavigationLink {
+                        ScanHistoryScreen()
+                    } label: {
+                        Text(lang.t("home.seeAll"))
+                            .font(AgriFont.semibold(13))
+                            .foregroundStyle(AgriColors.purple)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
             if store.events.isEmpty {
                 emptyEvents
             } else {
                 VStack(spacing: 10) {
-                    ForEach(store.events) { event in
-                        EventRow(event: event)
+                    ForEach(store.events.prefix(5)) { event in
+                        NavigationLink {
+                            ScanHistoryScreen()
+                        } label: {
+                            EventRow(event: event)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -318,5 +344,231 @@ private struct EventRow: View {
                 .background(Circle().fill(event.color.opacity(0.12)))
         }
         .agriCard(padding: 12)
+    }
+}
+
+/// Full scan history with animal + date filters, server-side filtered and
+/// paginated (infinite scroll) so it stays fast as scans accumulate. Tapping a
+/// scan with a known animal opens that animal's detail; unrecognized scans are
+/// listed but not tappable.
+struct ScanHistoryScreen: View {
+    @EnvironmentObject private var store: HerdStore
+    @ObservedObject private var lang = LanguageManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    private let repository = EventRepository()
+    private static let pageSize = 30
+
+    @State private var animalFilter: AnimalFilter = .all
+    @State private var dateFilter: DateFilter = .all
+
+    @State private var events: [ScanEvent] = []
+    @State private var nextOffset = 0
+    @State private var isLoading = false
+    @State private var reachedEnd = false
+    @State private var didInitialLoad = false
+
+    private enum AnimalFilter: Equatable {
+        case all
+        case unrecognized
+        case animal(UUID)
+    }
+
+    private enum DateFilter: CaseIterable {
+        case all, today, week, month
+        var labelKey: String {
+            switch self {
+            case .all: return "filter.allTime"
+            case .today: return "filter.today"
+            case .week: return "filter.week"
+            case .month: return "filter.month"
+            }
+        }
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                topBar
+                    .padding(.bottom, 2)
+                filters
+                    .padding(.bottom, 4)
+
+                if events.isEmpty && reachedEnd {
+                    emptyState
+                } else {
+                    ForEach(events) { event in
+                        row(event)
+                            .onAppear {
+                                if event.id == events.last?.id { Task { await loadNextPage() } }
+                            }
+                    }
+                    if isLoading {
+                        ProgressView()
+                            .tint(AgriColors.purple)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, AgriLayout.tabBarClearance)
+        }
+        .background(AgriColors.appBackground)
+        .toolbar(.hidden, for: .navigationBar)
+        .task {
+            guard !didInitialLoad else { return }
+            didInitialLoad = true
+            await loadNextPage()
+        }
+        .onChange(of: animalFilter) { _, _ in Task { await reload() } }
+        .onChange(of: dateFilter) { _, _ in Task { await reload() } }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AgriColors.purple)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        Circle()
+                            .fill(Color.white)
+                            .shadow(color: AgriColors.purpleDark.opacity(0.08), radius: 8, y: 3)
+                    )
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Text(lang.t("scanHistory.title"))
+                .font(AgriFont.semibold(16))
+                .foregroundStyle(AgriColors.purpleDark)
+            Spacer()
+            Color.clear.frame(width: 38, height: 38)
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ event: ScanEvent) -> some View {
+        if let animalID = event.animalID,
+           let animal = store.animals.first(where: { $0.id == animalID }) {
+            NavigationLink {
+                AnimalDetailView(animal: animal)
+            } label: {
+                EventRow(event: event)
+            }
+            .buttonStyle(.plain)
+        } else {
+            EventRow(event: event)
+        }
+    }
+
+    private var filters: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button(lang.t("filter.allAnimals")) { animalFilter = .all }
+                Button(lang.t("filter.unrecognized")) { animalFilter = .unrecognized }
+                if !store.animals.isEmpty { Divider() }
+                ForEach(store.animals) { animal in
+                    Button(animal.name.isEmpty ? animal.tag : animal.name) {
+                        animalFilter = .animal(animal.id)
+                    }
+                }
+            } label: {
+                filterChip(systemImage: "pawprint", text: animalFilterLabel)
+            }
+
+            Menu {
+                ForEach(DateFilter.allCases, id: \.self) { option in
+                    Button(lang.t(option.labelKey)) { dateFilter = option }
+                }
+            } label: {
+                filterChip(systemImage: "calendar", text: lang.t(dateFilter.labelKey))
+            }
+
+            Spacer()
+        }
+    }
+
+    private var animalFilterLabel: String {
+        switch animalFilter {
+        case .all: return lang.t("filter.allAnimals")
+        case .unrecognized: return lang.t("filter.unrecognized")
+        case .animal(let id):
+            return store.animals.first(where: { $0.id == id })?.name ?? lang.t("filter.allAnimals")
+        }
+    }
+
+    private func filterChip(systemImage: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
+            Text(text).font(AgriFont.semibold(13)).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(AgriColors.purple)
+        .padding(.vertical, 8).padding(.horizontal, 12)
+        .background(Capsule().fill(AgriColors.purple.opacity(0.1)))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(AgriColors.tabInactive.opacity(0.5))
+            Text(lang.t("scanHistory.empty"))
+                .font(AgriFont.regular(14))
+                .foregroundStyle(AgriColors.tabInactive)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .agriCard()
+    }
+
+    // MARK: Paging
+
+    private var serverAnimalFilter: EventAnimalFilter {
+        switch animalFilter {
+        case .all: return .all
+        case .unrecognized: return .unrecognized
+        case .animal(let id): return .specific(id)
+        }
+    }
+
+    private var sinceDate: Date? {
+        switch dateFilter {
+        case .all: return nil
+        case .today: return Calendar.current.startOfDay(for: Date())
+        case .week: return Calendar.current.date(byAdding: .day, value: -7, to: Date())
+        case .month: return Calendar.current.date(byAdding: .day, value: -30, to: Date())
+        }
+    }
+
+    /// Resets and loads the first page (after a filter change).
+    private func reload() async {
+        events = []
+        nextOffset = 0
+        reachedEnd = false
+        await loadNextPage()
+    }
+
+    private func loadNextPage() async {
+        guard !isLoading, !reachedEnd else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let records = try await repository.page(
+                offset: nextOffset,
+                limit: Self.pageSize,
+                animal: serverAnimalFilter,
+                since: sinceDate
+            )
+            events.append(contentsOf: records.map { ScanEvent(record: $0, animals: store.animals) })
+            nextOffset += records.count
+            if records.count < Self.pageSize { reachedEnd = true }
+        } catch {
+            // Stop paging on error; the loaded page (if any) stays visible.
+            reachedEnd = true
+        }
     }
 }

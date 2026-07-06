@@ -8,6 +8,7 @@ codec registration needed, which also keeps the pooler happy.
 Matching is an exact scan by design (no vector index): pgvector caps HNSW at
 2000 dims (MiewID is 2152) and exact scan is ~0.2 ms at 1k vectors anyway."""
 import asyncio
+import json
 
 import asyncpg
 import numpy as np
@@ -43,14 +44,15 @@ select a.id::text as animal_id, a.name, max(1 - (e.vec <=> $1::vector)) as sim
 from embeddings e
 join animals a on a.id = e.animal_id and a.deleted_at is null
 where e.owner = $2::uuid
+  and e.model_name = $3
 group by a.id, a.name
 order by sim desc
 limit 5
 """
 
 INSERT_SQL = """
-insert into embeddings (animal_id, owner, vec, image_path)
-values ($1::uuid, $2::uuid, $3::vector, $4)
+insert into embeddings (animal_id, owner, vec, image_path, model_name)
+values ($1::uuid, $2::uuid, $3::vector, $4, $5)
 """
 
 ANIMAL_OWNED_SQL = "select 1 from animals where id = $1::uuid and owner = $2::uuid"
@@ -58,7 +60,7 @@ ANIMAL_OWNED_SQL = "select 1 from animals where id = $1::uuid and owner = $2::uu
 
 async def match(vec: np.ndarray, owner: str) -> list[Candidate]:
     pool = await get_pool()
-    rows = await pool.fetch(MATCH_SQL, vector_literal(vec), owner)
+    rows = await pool.fetch(MATCH_SQL, vector_literal(vec), owner, get_settings().embedding_model_name)
     return [Candidate(r["animal_id"], r["name"], float(r["sim"])) for r in rows]
 
 
@@ -71,8 +73,9 @@ async def insert_embeddings(
     animal_id: str, owner: str, vecs: np.ndarray, image_paths: list[str]
 ) -> int:
     pool = await get_pool()
+    model_name = get_settings().embedding_model_name
     args = [
-        (animal_id, owner, vector_literal(v), p)
+        (animal_id, owner, vector_literal(v), p, model_name)
         for v, p in zip(vecs, image_paths, strict=True)
     ]
     await pool.executemany(INSERT_SQL, args)
@@ -80,13 +83,30 @@ async def insert_embeddings(
 
 
 INSERT_EVENT_SQL = """
-insert into events (owner, kind, animal_id, result, score)
-values ($1::uuid, $2, $3::uuid, $4, $5)
+insert into events (owner, kind, animal_id, result, score,
+                    model_name, margin, http_status, total_ms, request_id, detail)
+values ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
 """
 
 
 async def insert_event(
-    owner: str, kind: str, animal_id: str | None, result: str, score: float | None
+    owner: str,
+    kind: str,
+    animal_id: str | None,
+    result: str,
+    score: float | None,
+    *,
+    model_name: str | None = None,
+    margin: float | None = None,
+    http_status: int | None = None,
+    total_ms: int | None = None,
+    request_id: str | None = None,
+    detail: dict | None = None,
 ) -> None:
     pool = await get_pool()
-    await pool.execute(INSERT_EVENT_SQL, owner, kind, animal_id, result, score)
+    await pool.execute(
+        INSERT_EVENT_SQL,
+        owner, kind, animal_id, result, score,
+        model_name, margin, http_status, total_ms, request_id,
+        json.dumps(detail or {}),
+    )

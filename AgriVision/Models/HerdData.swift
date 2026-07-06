@@ -28,6 +28,8 @@ struct Animal: Identifiable {
     /// Derived server-side: true when the animal has at least one embedding.
     var muzzleRegistered: Bool
     var avatarColor: Color
+    /// Storage path of the chosen profile photo (nil = first full image).
+    var profilePath: String? = nil
 
     func ageDescription(_ lang: LanguageManager) -> String {
         guard let birthDate else { return "—" }
@@ -63,7 +65,8 @@ extension Animal {
             createdAt: record.createdAt,
             muzzleRegistered: record.muzzleRegistered,
             // Stable across launches: derived from the UUID, not array position.
-            avatarColor: Self.avatarPalette[Int(record.id.uuid.0) % Self.avatarPalette.count]
+            avatarColor: Self.avatarPalette[Int(record.id.uuid.0) % Self.avatarPalette.count],
+            profilePath: record.profilePath
         )
     }
 }
@@ -180,6 +183,7 @@ final class HerdStore: ObservableObject {
         loadError = nil
         defer { isLoading = false }
         do {
+            // Home shows the latest 5; the scan-history screen paginates the rest.
             async let pendingEvents = eventSource.recent(limit: 20)
             let records = try await animalSource.list()
             let loaded = records.map(Animal.init(record:))
@@ -220,6 +224,12 @@ final class HerdStore: ObservableObject {
         animals[idx].breed = breed
         animals[idx].sex = sex
         animals[idx].birthDate = birthDate
+    }
+
+    /// Updates the chosen profile photo path after AnimalRepository.setProfilePath.
+    func setProfilePath(id: UUID, path: String) {
+        guard let idx = animals.firstIndex(where: { $0.id == id }) else { return }
+        animals[idx].profilePath = path
     }
 
     /// Optimistic removal after AnimalRepository.softDelete succeeds. Stashes the

@@ -7,6 +7,9 @@ struct MainTabView: View {
     @ObservedObject private var lang = LanguageManager.shared
     @State private var selected: AppTab = .home
     @StateObject private var store = HerdStore()
+    /// Muzzle carried from an unknown identify result into the Add-Animal hub.
+    @State private var carriedMuzzleCrop: UIImage?
+    @State private var carriedMuzzleFull: UIImage?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -39,6 +42,14 @@ struct MainTabView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await recognition.warmUp() } }
         }
+        // Drop the carried muzzle once the user leaves the Add hub, so a manual
+        // "Add animal" later starts without a stale seed.
+        .onChange(of: selected) { _, tab in
+            if tab != .addAnimal {
+                carriedMuzzleCrop = nil
+                carriedMuzzleFull = nil
+            }
+        }
     }
 
     @ViewBuilder
@@ -54,13 +65,19 @@ struct MainTabView: View {
         case .camera:
             CameraScreen(
                 onClose: { selected = .home },
-                onRequestEnroll: {
-                    // Unknown identify -> offer enrollment via the Add form.
+                onRequestEnroll: { crop, full in
+                    // Unknown identify -> carry the captured muzzle into the Add hub.
+                    carriedMuzzleCrop = crop
+                    carriedMuzzleFull = full
                     selected = .addAnimal
                 }
             )
         case .addAnimal:
-            AddAnimalScreen(onOpenHerd: { selected = .animals })
+            AddAnimalScreen(
+                onOpenHerd: { selected = .animals },
+                carriedMuzzleCrop: carriedMuzzleCrop,
+                carriedMuzzleFull: carriedMuzzleFull
+            )
         case .settings:
             SettingsScreen()
         }
