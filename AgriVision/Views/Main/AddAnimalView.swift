@@ -31,6 +31,9 @@ struct AddAnimalScreen: View {
     // these cow photos in the herd detail screen.
     @State private var muzzleCrops: [UIImage]
     @State private var cowPhotos: [UIImage] = []
+    /// Uncropped parent frames behind the muzzle scans, submitted as
+    /// `frame_images` (raw embedder-training material, never shown in-app).
+    @State private var muzzleSourceFrames: [UIImage]
 
     @State private var showSavedToast = false
     @State private var enrollStatus: EnrollStatus = .idle
@@ -69,14 +72,35 @@ struct AddAnimalScreen: View {
         self.carriedMuzzleCrop = carriedMuzzleCrop
         self.carriedMuzzleFull = carriedMuzzleFull
         _muzzleCrops = State(initialValue: carriedMuzzleCrop.map { [$0] } ?? [])
+        _muzzleSourceFrames = State(initialValue: carriedMuzzleFull.map { [$0] } ?? [])
     }
 
     private var muzzleComplete: Bool { muzzleCrops.count >= Self.muzzleTarget }
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && !nameIsTaken
             && !tag.trimmingCharacters(in: .whitespaces).isEmpty
             && muzzleComplete
+    }
+
+    /// True when the entered name already belongs to another animal in the herd
+    /// (case/whitespace-insensitive). Blocks save and shows an inline warning.
+    private var nameIsTaken: Bool {
+        let entered = AnimalNameGenerator.normalize(name)
+        guard !entered.isEmpty else { return false }
+        return store.animals.contains {
+            $0.id.uuidString != createdAnimalID && AnimalNameGenerator.normalize($0.name) == entered
+        }
+    }
+
+    /// Fills the name field with a fresh suggestion that no herd animal uses.
+    private func shuffleName() {
+        name = AnimalNameGenerator.suggest(
+            language: lang.language,
+            takenNames: store.animals.map(\.name),
+            current: name
+        )
     }
 
     /// Cow body photos uploaded as `full_images` (the profile is chosen from
@@ -105,6 +129,12 @@ struct AddAnimalScreen: View {
 
             enrollOverlay
         }
+        .onAppear {
+            // Prefill an auto-generated name so most farmers can just keep it.
+            if name.trimmingCharacters(in: .whitespaces).isEmpty {
+                shuffleName()
+            }
+        }
         .fullScreenCover(item: $activeCamera) { which in
             switch which {
             case .muzzle:
@@ -115,8 +145,9 @@ struct AddAnimalScreen: View {
                         max: max(1, Self.muzzleTarget - muzzleCrops.count),
                         titleKey: "camera.collect.muzzle"
                     ),
-                    onCollected: { crops, _ in
+                    onCollected: { crops, _, sourceFrames in
                         muzzleCrops.append(contentsOf: crops)
+                        muzzleSourceFrames.append(contentsOf: sourceFrames)
                         activeCamera = nil
                     }
                 )
@@ -128,7 +159,7 @@ struct AddAnimalScreen: View {
                         max: max(1, Self.cowPhotoMax - cowPhotos.count),
                         titleKey: "camera.collect.cow"
                     ),
-                    onCollected: { frames, _ in
+                    onCollected: { frames, _, _ in
                         cowPhotos.append(contentsOf: frames)
                         activeCamera = nil
                     }
@@ -320,7 +351,17 @@ struct AddAnimalScreen: View {
 
     private var detailsCard: some View {
         VStack(spacing: 16) {
-            AnimalDetailsForm(name: $name, tag: $tag, breed: $breed, sex: $sex, birthDate: $birthDate)
+            AnimalDetailsForm(
+                name: $name, tag: $tag, breed: $breed, sex: $sex, birthDate: $birthDate,
+                onShuffleName: shuffleName
+            )
+
+            if nameIsTaken {
+                Label(lang.t("add.nameTaken"), systemImage: "exclamationmark.triangle.fill")
+                    .font(AgriFont.semibold(12))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.weight"))
@@ -481,6 +522,8 @@ struct AddAnimalScreen: View {
         // Only the user's cow photos go to full_images, so the gallery shows
         // exactly what they took (no auto-captured muzzle frame).
         let fullJpegs = extraFullFrames.compactMap { ImageEncoding.fullBodyJPEG($0) }
+        // Uncropped parents of the muzzle scans — kept for the embedder team.
+        let frameJpegs = muzzleSourceFrames.compactMap { ImageEncoding.fullBodyJPEG($0) }
         let weightKg = Double(weightText.replacingOccurrences(of: ",", with: "."))
 
         Task {
@@ -516,7 +559,8 @@ struct AddAnimalScreen: View {
                 _ = try await recognition.enroll(
                     animalID: animalID,
                     muzzleJpegs: muzzleJpegs,
-                    fullJpegs: fullJpegs
+                    fullJpegs: fullJpegs,
+                    frameJpegs: frameJpegs
                 )
                 await MainActor.run {
                     store.markLastAddedMuzzleRegistered()
@@ -541,6 +585,7 @@ struct AddAnimalScreen: View {
         tag = ""
         weightText = ""
         muzzleCrops = []
+        muzzleSourceFrames = []
         cowPhotos = []
         createdAnimalID = nil
         withAnimation(.spring(duration: 0.35)) { showSavedToast = true }
@@ -600,6 +645,9 @@ struct AnimalDetailsForm: View {
     @Binding var breed: String
     @Binding var sex: AnimalSex
     @Binding var birthDate: Date
+    /// When set, a shuffle button beside the name field fills in a fresh
+    /// auto-generated name (Add flow only; Edit passes nothing).
+    var onShuffleName: (() -> Void)? = nil
     @ObservedObject private var lang = LanguageManager.shared
 
     static let breeds = ["Holstein", "Angus", "Simmental", "Jersey", "Hereford", "Charolais", "Limousin"]
@@ -611,7 +659,20 @@ struct AnimalDetailsForm: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            FormField(label: lang.t("add.name"), placeholder: lang.t("add.namePh"), text: $name)
+            HStack(alignment: .bottom, spacing: 8) {
+                FormField(label: lang.t("add.name"), placeholder: lang.t("add.namePh"), text: $name)
+                if let onShuffleName {
+                    Button(action: onShuffleName) {
+                        Image(systemName: "dice.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(AgriColors.purple)
+                            .frame(width: 44, height: 44)
+                            .background(fieldBackground)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(lang.t("add.shuffleName"))
+                }
+            }
             FormField(label: lang.t("add.tag"), placeholder: lang.t("add.tagPh"), text: $tag)
 
             VStack(alignment: .leading, spacing: 7) {
