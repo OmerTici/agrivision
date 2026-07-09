@@ -95,6 +95,12 @@ final class CameraModel: NSObject, ObservableObject {
     /// Optional full-frame photos gathered on the Add-Animal hub (profile + cow
     /// body) and submitted alongside the muzzle burst as `full_images`.
     private var extraFullFrames: [UIImage] = []
+    /// The uncropped parent frame of EVERY successful muzzle scan (not just the
+    /// best). Submitted as `frame_images` — raw dataset material the embedder
+    /// team asked to keep; stored server-side under `frame/`, never user-facing.
+    private var muzzleSourceFrames: [UIImage] = []
+    /// All uncropped parents from a `collectMuzzles` session, returned to the hub.
+    var collectedSourceFrames: [UIImage] { muzzleSourceFrames }
     /// Most images a collection session may gather before auto-finishing.
     private var collectTarget = 1
     /// Flipped true (on main) when a collection session reaches its target.
@@ -152,6 +158,30 @@ final class CameraModel: NSObject, ObservableObject {
     private let videoOutput = AVCaptureVideoDataOutput()
     private var captureDelegate: PhotoCaptureDelegate?
     private var isConfigured = false
+    /// Back camera input device, kept for zoom control (touched on sessionQueue).
+    private var videoDevice: AVCaptureDevice?
+
+    /// Current digital zoom applied to the device. Zooming also feeds the
+    /// detector a magnified frame, so a far cow can be zoomed past the area gate.
+    @Published private(set) var zoomFactor: CGFloat = 1.0
+    /// Cap well below the sensor max — past ~6× the upscaled still is too soft
+    /// for a useful muzzle crop.
+    static let maxZoom: CGFloat = 6.0
+
+    /// Applies a pinch zoom, clamped to [1, maxZoom] and the device's own limit.
+    func setZoom(_ factor: CGFloat) {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoDevice else { return }
+            let limit = min(device.activeFormat.videoMaxZoomFactor, Self.maxZoom)
+            let clamped = max(1.0, min(factor, limit))
+            do {
+                try device.lockForConfiguration()
+                device.videoZoomFactor = clamped
+                device.unlockForConfiguration()
+                DispatchQueue.main.async { self.zoomFactor = clamped }
+            } catch {}
+        }
+    }
 
     // Detection / auto-capture state (touched only on videoQueue).
     private let cowDetector = CowDetectorService()
@@ -177,30 +207,33 @@ final class CameraModel: NSObject, ObservableObject {
     // "cow" box, so the geometry is loose: a close cow can fill the frame and touch
     // the edges. The muzzle is localized separately on the captured still.
 
-    private let edgeMargin: CGFloat = 0.04
     /// How long a qualifying cow must be held steady before auto-capture.
-    private let holdDuration: TimeInterval = 2.0
+    /// Barn testing (2026-07): swinging heads made a 2.0s hold nearly impossible
+    /// to complete; capture timing is better handled by seeing an actual muzzle
+    /// than by demanding a long steady cow.
+    private let holdDuration: TimeInterval = 0.8
+    /// Stills captured per automatic trigger; the one with the best muzzle wins.
+    /// The burst spans ~a second, so a swinging head gets sampled at several
+    /// poses instead of one blind shot. Manual taps stay single-shot — the human
+    /// already timed the moment. One burst yields ONE crop: enrollment diversity
+    /// comes from separate scans, never from burst siblings.
+    private static let autoBurstCount = 3
 
     /// Minimum confidence for the live preview gate. Stock COCO "cow" scores run
-    /// ~0.3–0.9 depending on framing. Strict-gate test build: raised so only a
-    /// clearly-scored cow trips the gate; the class filter plus the geometry
-    /// checks in `qualifiesCowLive` further reject non-cows and bad framing.
-    /// If close cows in dim barns stop firing, drop this back toward ~0.45.
+    /// ~0.3–0.9 depending on framing. Field scores on real cows sit at 0.90+,
+    /// so this rejects background clutter without touching real framings.
     private let cowConfidenceThreshold: Float = 0.55
     /// Floor for cropping a muzzle from the captured still — the muzzle YOLO11n
     /// export's NMS won't emit below 0.25, so this accepts what it detects and
     /// lets a failed crop ask for a retry rather than enrolling a junk box.
     private let muzzleConfidenceThreshold: Float = 0.25
-    /// Strict-gate test build: gate on how much of the frame the cow fills by
-    /// AREA, not per-axis. Cows are wider than tall side-on, so a per-axis floor
-    /// rejected legitimate broadside framing on the short axis. Area is
-    /// pose-agnostic: the cow must cover ≥12% of the picture (≈ a 35%×35% box,
-    /// but a wide-and-short or tall-and-thin cow of equal area also passes).
-    /// Raising this is the main lever against far-away, low-quality triggers.
-    private let minCowAreaFraction: CGFloat = 0.12
-    /// Strict-gate test build: box center must sit in the middle ~40% of frame,
-    /// rejecting cows drifting at the edges.
-    private let cowCenterRange: ClosedRange<CGFloat> = 0.30...0.70
+    /// The cow must cover this fraction of the frame by area. Barn testing
+    /// (2026-07) showed the old 0.12 floor plus edge/center checks rejected
+    /// nearly every real framing — close cows touch the frame edges. The live
+    /// gate now trusts the detector; the muzzle crop on the captured still is
+    /// the real quality authority. This floor only screens out cows across the
+    /// barn — pinch-to-zoom handles those.
+    private let minCowAreaFraction: CGFloat = 0.04
 
     private static let idleReadout = "Point at the cow's head…"
 
@@ -306,6 +339,7 @@ final class CameraModel: NSObject, ObservableObject {
                    let input = try? AVCaptureDeviceInput(device: device),
                    self.session.canAddInput(input) {
                     self.session.addInput(input)
+                    self.videoDevice = device
                 }
 
                 if self.session.canAddOutput(self.photoOutput) {
@@ -347,7 +381,7 @@ final class CameraModel: NSObject, ObservableObject {
         processCapturedPhoto(image)
     }
 
-    func capturePhoto() {
+    func capturePhoto(burstCount: Int = 1) {
         // Ungated frame collection ignores the cow gate — the shutter always fires.
         if captureMode == .manual && !canManualCapture && !ungatedCapture { return }
         if isContacting { return }
@@ -360,18 +394,37 @@ final class CameraModel: NSObject, ObservableObject {
             guard let self, self.isConfigured, self.session.isRunning else { return }
 
             DispatchQueue.main.async { self.isProcessing = true }
-
-            let delegate = PhotoCaptureDelegate { [weak self] image in
-                guard let self else { return }
-                DispatchQueue.main.async {
-                    self.lastPhoto = image
-                    self.captureDelegate = nil
-                }
-                self.processCapturedPhoto(image)
-            }
-            self.captureDelegate = delegate
-            self.photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: delegate)
+            self.captureNext(remaining: max(1, burstCount), collected: [])
         }
+    }
+
+    /// Chains sequential still captures on `sessionQueue`, then hands the set off
+    /// for processing. Each still waits for the previous delegate callback, so
+    /// the burst naturally spreads over ~a second of head movement.
+    private func captureNext(remaining: Int, collected: [UIImage]) {
+        guard remaining > 0 else {
+            DispatchQueue.main.async {
+                self.lastPhoto = collected.last
+                self.captureDelegate = nil
+            }
+            if collected.count > 1 {
+                processCapturedBurst(collected)
+            } else {
+                processCapturedPhoto(collected.first)
+            }
+            return
+        }
+
+        let delegate = PhotoCaptureDelegate { [weak self] image in
+            guard let self else { return }
+            var images = collected
+            if let image { images.append(image) }
+            self.sessionQueue.async {
+                self.captureNext(remaining: remaining - 1, collected: images)
+            }
+        }
+        captureDelegate = delegate
+        photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: delegate)
     }
 
     /// Crops the muzzle from the captured still. The live cow gate already decided
@@ -411,6 +464,48 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
+    /// Scores every still in an automatic burst with the muzzle detector and
+    /// continues the pipeline with the single best one — the rest are dropped.
+    private func processCapturedBurst(_ images: [UIImage]) {
+        videoQueue.async { [weak self] in
+            guard let self else { return }
+
+            // Hub frame collection has no muzzle to score; take the first still.
+            if case .collectFrames = self.purpose {
+                self.finishFrameSuccess(frame: images.first)
+                return
+            }
+
+            var bestImage: UIImage?
+            var bestCG: CGImage?
+            var bestDetection: MuzzleDetection?
+            for image in images {
+                guard let cg = image.normalizedCGImage() else { continue }
+                let top = self.muzzleDetector.detections(in: cg, orientation: .up)
+                    .max(by: { $0.confidence < $1.confidence })
+                if let top, top.confidence > (bestDetection?.confidence ?? -1) {
+                    bestImage = image
+                    bestCG = cg
+                    bestDetection = top
+                }
+            }
+
+            let conf = bestDetection?.confidence ?? 0
+            let confText = String(format: "Muzzle %.2f · best of %d", conf, images.count)
+
+            guard let bestDetection, let bestCG,
+                  bestDetection.confidence >= self.muzzleConfidenceThreshold,
+                  let crop = self.muzzleDetector.cropMuzzle(from: bestCG, boundingBox: bestDetection.boundingBox)
+            else {
+                self.finishFailure("camera.fail.crop", confidence: confText)
+                return
+            }
+
+            DispatchQueue.main.async { self.lastPhoto = bestImage }
+            self.finishSuccess(crop: crop, fullFrame: bestImage, confidence: bestDetection.confidence, confidenceText: confText)
+        }
+    }
+
     private func finishSuccess(crop: UIImage, fullFrame: UIImage?, confidence: Float, confidenceText: String) {
         DispatchQueue.main.async {
             self.croppedMuzzle = crop
@@ -424,8 +519,11 @@ final class CameraModel: NSObject, ObservableObject {
                 self.captureSucceeded = true
             case .enroll:
                 self.collectedCrops.append(crop)
-                if let fullFrame, confidence > (self.enrollFullFrame?.confidence ?? 0) {
-                    self.enrollFullFrame = (confidence, fullFrame)
+                if let fullFrame {
+                    self.muzzleSourceFrames.append(fullFrame)
+                    if confidence > (self.enrollFullFrame?.confidence ?? 0) {
+                        self.enrollFullFrame = (confidence, fullFrame)
+                    }
                 }
                 if self.collectedCrops.count >= Self.enrollTarget {
                     // Burst complete — stay paused; the view triggers submission.
@@ -436,8 +534,11 @@ final class CameraModel: NSObject, ObservableObject {
                 }
             case .collectMuzzles:
                 self.collectedCrops.append(crop)
-                if let fullFrame, confidence > (self.enrollFullFrame?.confidence ?? 0) {
-                    self.enrollFullFrame = (confidence, fullFrame)
+                if let fullFrame {
+                    self.muzzleSourceFrames.append(fullFrame)
+                    if confidence > (self.enrollFullFrame?.confidence ?? 0) {
+                        self.enrollFullFrame = (confidence, fullFrame)
+                    }
                 }
                 if self.collectedCrops.count >= self.collectTarget {
                     self.collectComplete = true
@@ -524,6 +625,7 @@ final class CameraModel: NSObject, ObservableObject {
             self.ungatedCapture = false
             self.collectedCrops = seedCrops
             self.enrollFullFrame = seedFullFrame.map { (0, $0) }
+            self.muzzleSourceFrames = seedFullFrame.map { [$0] } ?? []
             self.extraFullFrames = extraFullFrames
             self.enrollPhase = .collectingMuzzles
             self.identifyResult = nil
@@ -548,6 +650,7 @@ final class CameraModel: NSObject, ObservableObject {
             self.collectTarget = Swift.max(1, max)
             self.collectedCrops = []
             self.enrollFullFrame = nil
+            self.muzzleSourceFrames = []
             self.extraFullFrames = []
             self.collectComplete = false
             self.identifyResult = nil
@@ -604,6 +707,8 @@ final class CameraModel: NSObject, ObservableObject {
             fullJpegs.append(best)
         }
         fullJpegs.append(contentsOf: extraFullFrames.compactMap { ImageEncoding.fullBodyJPEG($0) })
+        // Every scan's uncropped parent frame rides along as raw dataset material.
+        let frameJpegs = muzzleSourceFrames.compactMap { ImageEncoding.fullBodyJPEG($0) }
         guard muzzleJpegs.count == collectedCrops.count, !muzzleJpegs.isEmpty else {
             recognitionError = Self.localizedRecognitionMessage(for: RecognitionError.encoding)
             enrollPhase = .failed
@@ -612,7 +717,8 @@ final class CameraModel: NSObject, ObservableObject {
         do {
             _ = try await service.enroll(animalID: animalID,
                                          muzzleJpegs: muzzleJpegs,
-                                         fullJpegs: fullJpegs)
+                                         fullJpegs: fullJpegs,
+                                         frameJpegs: frameJpegs)
             enrollPhase = .done
         } catch {
             recognitionError = Self.localizedRecognitionMessage(for: error)
@@ -659,6 +765,7 @@ final class CameraModel: NSObject, ObservableObject {
     func releaseCapturedImages() {
         collectedCrops = []
         enrollFullFrame = nil
+        muzzleSourceFrames = []
         extraFullFrames = []
         lastPhoto = nil
     }
@@ -670,6 +777,7 @@ final class CameraModel: NSObject, ObservableObject {
             self.recognitionError = nil
             self.collectedCrops = []
             self.enrollFullFrame = nil
+            self.muzzleSourceFrames = []
             self.enrollPhase = .collectingMuzzles
         }
         scanAgain()
@@ -764,8 +872,12 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         if counting, remaining <= 0 {
             hasAutoCaptured = true
             DispatchQueue.main.async { [weak self] in
-                self?.countdown = nil
-                self?.capturePhoto()
+                guard let self else { return }
+                self.countdown = nil
+                // Burst only when a muzzle crop is the goal; plain frame grabs
+                // (profile / cow body) have nothing to score a burst against.
+                let wantsMuzzle = self.purpose != .collectFrames
+                self.capturePhoto(burstCount: wantsMuzzle ? Self.autoBurstCount : 1)
             }
         }
     }
@@ -797,17 +909,8 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
 
     private func qualifiesCowLive(_ detection: CowDetection) -> Bool {
         guard detection.confidence >= cowConfidenceThreshold else { return false }
-
         let box = detection.boundingBox
-        guard box.width * box.height >= minCowAreaFraction else { return false }
-
-        let aspect = box.width / max(box.height, 0.001)
-        if aspect > 3.5, box.width > 0.45 { return false }
-
-        guard box.minX >= edgeMargin, box.minY >= edgeMargin,
-              box.maxX <= 1 - edgeMargin, box.maxY <= 1 - edgeMargin else { return false }
-
-        return cowCenterRange.contains(box.midX) && cowCenterRange.contains(box.midY)
+        return box.width * box.height >= minCowAreaFraction
     }
 }
 
@@ -879,7 +982,7 @@ struct CameraScreen: View {
     var collection: CameraCollectionRequest? = nil
     /// Delivers the gathered images (and best full frame, for muzzle collection)
     /// when a collection session finishes.
-    var onCollected: (_ images: [UIImage], _ bestFull: UIImage?) -> Void = { _, _ in }
+    var onCollected: (_ images: [UIImage], _ bestFull: UIImage?, _ sourceFrames: [UIImage]) -> Void = { _, _, _ in }
     /// Called when an unknown identify result's "Enroll" button is tapped. Passes
     /// the just-captured muzzle crop and its full frame so enrollment can reuse them.
     var onRequestEnroll: (_ muzzleCrop: UIImage?, _ fullFrame: UIImage?) -> Void = { _, _ in }
@@ -890,6 +993,8 @@ struct CameraScreen: View {
     @State private var flash = false
     @State private var showHelp = false
     @State private var showResult = false
+    /// Zoom factor at the start of the current pinch; the gesture scales from here.
+    @State private var zoomAnchor: CGFloat = 1.0
     /// Debug/testing: pick an image from the library and run the real models on
     /// it — bypasses the camera so screen-photo moiré can't corrupt the test.
     @State private var testPickerItem: PhotosPickerItem?
@@ -905,6 +1010,15 @@ struct CameraScreen: View {
             case .authorized:
                 CameraPreviewView(session: model.session)
                     .ignoresSafeArea()
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                model.setZoom(zoomAnchor * value)
+                            }
+                            .onEnded { value in
+                                zoomAnchor = max(1.0, min(zoomAnchor * value, CameraModel.maxZoom))
+                            }
+                    )
             case .denied:
                 deniedView
             case .idle:
@@ -929,6 +1043,21 @@ struct CameraScreen: View {
                         .shadow(color: .black.opacity(0.5), radius: 8)
                         .transition(.scale.combined(with: .opacity))
                         .id(countdown)
+                }
+
+                if model.zoomFactor > 1.01 {
+                    VStack {
+                        Spacer()
+                        Text(String(format: "%.1f×", model.zoomFactor))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 5)
+                            .padding(.horizontal, 10)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Capsule())
+                            .padding(.bottom, 158)
+                    }
+                    .allowsHitTesting(false)
                 }
 
                 if !model.ungatedCapture,
@@ -993,7 +1122,7 @@ struct CameraScreen: View {
         .onChange(of: model.collectComplete) { _, done in
             guard done else { return }
             model.collectComplete = false
-            onCollected(model.collectedCrops, model.collectedBestFull)
+            onCollected(model.collectedCrops, model.collectedBestFull, model.collectedSourceFrames)
             onClose()
         }
         .onChange(of: model.captureSucceeded) { _, succeeded in
