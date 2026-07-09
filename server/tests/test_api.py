@@ -77,7 +77,7 @@ def test_enroll_batches_and_inserts(client, jpeg_bytes, monkeypatch):
     files = [("images", (f"m{i}.jpg", jpeg_bytes, "image/jpeg")) for i in range(3)]
     r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
     assert r.status_code == 200
-    assert r.json() == {"enrolled_count": 3, "full_images_stored": 0}
+    assert r.json() == {"enrolled_count": 3, "full_images_stored": 0, "frame_images_stored": 0}
     assert np.asarray(inserted["vecs"]).shape == (3, 2152)  # one batched pass
     assert len(inserted["paths"]) == 3
 
@@ -145,9 +145,38 @@ def test_enroll_with_full_images(client, jpeg_bytes, monkeypatch):
     ]
     r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
     assert r.status_code == 200
-    assert r.json() == {"enrolled_count": 1, "full_images_stored": 2}
+    assert r.json() == {"enrolled_count": 1, "full_images_stored": 2, "frame_images_stored": 0}
     assert sum("/muzzle/" in p for p in uploads) == 1
     assert sum("/full/" in p for p in uploads) == 2
+
+
+def test_enroll_with_frame_images(client, jpeg_bytes, monkeypatch):
+    uploads = []
+
+    async def fake_animal_owned(animal_id, owner):
+        return True
+
+    async def fake_upload(path, data):
+        uploads.append(path)
+        return path
+
+    async def fake_insert(animal_id, owner, vecs, image_paths):
+        assert all("/muzzle/" in p for p in image_paths)  # frames never embedded
+        return len(image_paths)
+
+    monkeypatch.setattr(main_mod.db, "animal_owned", fake_animal_owned)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
+    monkeypatch.setattr(main_mod.db, "insert_embeddings", fake_insert)
+
+    files = (
+        [("images", ("m.jpg", jpeg_bytes, "image/jpeg"))]
+        + [("full_images", ("f.jpg", jpeg_bytes, "image/jpeg"))]
+        + [("frame_images", (f"r{i}.jpg", jpeg_bytes, "image/jpeg")) for i in range(5)]
+    )
+    r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
+    assert r.status_code == 200
+    assert r.json() == {"enrolled_count": 1, "full_images_stored": 1, "frame_images_stored": 5}
+    assert sum("/frame/" in p for p in uploads) == 5
 
 
 MODEL = "conservationxlabs/miewid-msv3@4f1d7f2b521149e5fe34bb85f377248ce9971a7d"

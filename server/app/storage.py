@@ -5,6 +5,9 @@ line up with the DB's RLS model.
 Object paths follow the layout:
   {owner}/{animal_id}/muzzle/{uuid}.jpg  — muzzle crops (embedded + in DB)
   {owner}/{animal_id}/full/{uuid}.jpg    — full pictures (stored only, not embedded)
+  {owner}/{animal_id}/frame/{uuid}.jpg   — raw uncropped enrollment frames (dataset
+                                           material for embedder training; never
+                                           listed by the app's gallery)
 """
 import uuid
 
@@ -14,7 +17,7 @@ from .config import get_settings
 
 
 def object_path(owner: str, animal_id: str, kind: str) -> str:
-    if kind not in ("muzzle", "full"):
+    if kind not in ("muzzle", "full", "frame"):
         raise ValueError(f"unknown image kind: {kind}")
     return f"{owner}/{animal_id}/{kind}/{uuid.uuid4().hex}.jpg"
 

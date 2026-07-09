@@ -70,7 +70,7 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
         return try await send(request, decode: IdentifyResult.self)
     }
 
-    func enroll(animalID: String, muzzleJpegs: [Data], fullJpegs: [Data]) async throws -> EnrollResult {
+    func enroll(animalID: String, muzzleJpegs: [Data], fullJpegs: [Data], frameJpegs: [Data]) async throws -> EnrollResult {
         guard let token = await tokenProvider() else { throw RecognitionError.notAuthenticated }
         var form = MultipartFormData()
         form.appendField(name: "animal_id", value: animalID)
@@ -80,6 +80,10 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
         }
         for (index, jpeg) in fullJpegs.enumerated() {
             form.appendFile(name: "full_images", filename: "full_\(index).jpg",
+                            mimeType: "image/jpeg", data: jpeg)
+        }
+        for (index, jpeg) in frameJpegs.enumerated() {
+            form.appendFile(name: "frame_images", filename: "frame_\(index).jpg",
                             mimeType: "image/jpeg", data: jpeg)
         }
         let request = makeRequest(path: "enroll", form: form, token: token)

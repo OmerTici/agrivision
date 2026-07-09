@@ -7,8 +7,11 @@ protocol RecognitionService {
     func identify(jpegData: Data) async throws -> IdentifyResult
     /// `fullJpegs` carries the optional full-frame photos (best muzzle frame,
     /// profile picture, and any cow body photos) — all stored server-side as
-    /// `full_images`. Pass an empty array when there are none.
-    func enroll(animalID: String, muzzleJpegs: [Data], fullJpegs: [Data]) async throws -> EnrollResult
+    /// `full_images` and shown in the app's gallery. `frameJpegs` carries the
+    /// raw uncropped frames behind each muzzle scan — stored as `frame_images`
+    /// (embedder-training material, never user-facing). Pass empty arrays when
+    /// there are none.
+    func enroll(animalID: String, muzzleJpegs: [Data], fullJpegs: [Data], frameJpegs: [Data]) async throws -> EnrollResult
 }
 
 /// Canned responses for previews and unit tests; no network.
@@ -31,7 +34,7 @@ final class MockRecognitionService: ObservableObject, RecognitionService {
 
     func warmUp() async { isReady = true }
     func identify(jpegData: Data) async throws -> IdentifyResult { identifyResult }
-    func enroll(animalID: String, muzzleJpegs: [Data], fullJpegs: [Data]) async throws -> EnrollResult {
+    func enroll(animalID: String, muzzleJpegs: [Data], fullJpegs: [Data], frameJpegs: [Data]) async throws -> EnrollResult {
         enrollResult
     }
 }

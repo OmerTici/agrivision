@@ -186,6 +186,7 @@ async def enroll(
     animal_id: str = Form(...),
     images: list[UploadFile] = File(...),
     full_images: list[UploadFile] = File(default=[]),
+    frame_images: list[UploadFile] = File(default=[]),
     uid: str = Depends(current_uid),
 ):
     rlog = _RequestLog("enroll", uid)
@@ -204,6 +205,12 @@ async def enroll(
         rlog.detail["full_image_count"] = len(raw_full)
         rlog.detail["full_image_bytes"] = sum(len(data) for data in raw_full)
         _decode_jpegs(raw_full)  # validate only; full pictures are stored, never embedded
+        # Raw uncropped frames behind the muzzle scans: stored under frame/ as
+        # embedder-training material, invisible to the app's gallery.
+        raw_frames = [await f.read() for f in frame_images]
+        rlog.detail["frame_image_count"] = len(raw_frames)
+        rlog.detail["frame_image_bytes"] = sum(len(data) for data in raw_frames)
+        _decode_jpegs(raw_frames)
         embed_started = time.perf_counter()
         vecs = _embed(pil)  # ONE batched forward pass for all muzzle crops
         rlog.detail["embed_ms"] = _ms(embed_started)
@@ -219,6 +226,8 @@ async def enroll(
                 paths.append(path)
             for data in raw_full:
                 await storage.upload_jpeg(storage.object_path(uid, animal_id, "full"), data)
+            for data in raw_frames:
+                await storage.upload_jpeg(storage.object_path(uid, animal_id, "frame"), data)
         except httpx.HTTPError:
             raise HTTPException(status_code=502, detail="image storage upload failed")
         rlog.detail["upload_ms"] = _ms(upload_started)
@@ -228,7 +237,11 @@ async def enroll(
         rlog.detail["enrolled_count"] = count
         rlog.result = "enrolled"
         rlog.http_status = 200
-        return EnrollResponse(enrolled_count=count, full_images_stored=len(raw_full))
+        return EnrollResponse(
+            enrolled_count=count,
+            full_images_stored=len(raw_full),
+            frame_images_stored=len(raw_frames),
+        )
     except HTTPException as e:
         rlog.fail(e)
         raise
