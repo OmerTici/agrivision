@@ -212,12 +212,16 @@ final class CameraModel: NSObject, ObservableObject {
     /// to complete; capture timing is better handled by seeing an actual muzzle
     /// than by demanding a long steady cow.
     private let holdDuration: TimeInterval = 0.8
-    /// Stills captured per automatic trigger; the one with the best muzzle wins.
-    /// The burst spans ~a second, so a swinging head gets sampled at several
-    /// poses instead of one blind shot. Manual taps stay single-shot — the human
-    /// already timed the moment. One burst yields ONE crop: enrollment diversity
-    /// comes from separate scans, never from burst siblings.
-    private static let autoBurstCount = 3
+    /// Once the auto hold completes, watch the live frames for an actual muzzle
+    /// and fire the still the moment one shows — a swinging head gets caught at
+    /// the right pose with a single, well-timed shutter (field feedback: the
+    /// 3-still burst read as chaotic free-firing). If no muzzle appears within
+    /// this window, fire anyway and let the crop-on-still verdict decide.
+    private let muzzleSeekTimeout: TimeInterval = 2.5
+    /// Live-preview muzzle confidence that triggers the still.
+    private let liveMuzzleThreshold: Float = 0.30
+    /// When the current muzzle seek began (touched only on videoQueue).
+    private var muzzleSeekSince: Date?
 
     /// Minimum confidence for the live preview gate. Stock COCO "cow" scores run
     /// ~0.3–0.9 depending on framing. Field scores on real cows sit at 0.90+,
@@ -307,6 +311,7 @@ final class CameraModel: NSObject, ObservableObject {
         videoQueue.async { [weak self] in
             self?.isAutomaticMode = mode == .automatic
             self?.qualifyingSince = nil
+            self?.muzzleSeekSince = nil
             self?.hasAutoCaptured = false
         }
     }
@@ -316,6 +321,7 @@ final class CameraModel: NSObject, ObservableObject {
             self?.qualifyingSince = nil
             self?.hasAutoCaptured = false
             self?.lastCowHit = nil
+            self?.muzzleSeekSince = nil
             self?.manualReadyGate.reset()
             self?.autoCowGate.reset()
         }
@@ -381,7 +387,7 @@ final class CameraModel: NSObject, ObservableObject {
         processCapturedPhoto(image)
     }
 
-    func capturePhoto(burstCount: Int = 1) {
+    func capturePhoto() {
         // Ungated frame collection ignores the cow gate — the shutter always fires.
         if captureMode == .manual && !canManualCapture && !ungatedCapture { return }
         if isContacting { return }
@@ -394,37 +400,18 @@ final class CameraModel: NSObject, ObservableObject {
             guard let self, self.isConfigured, self.session.isRunning else { return }
 
             DispatchQueue.main.async { self.isProcessing = true }
-            self.captureNext(remaining: max(1, burstCount), collected: [])
-        }
-    }
 
-    /// Chains sequential still captures on `sessionQueue`, then hands the set off
-    /// for processing. Each still waits for the previous delegate callback, so
-    /// the burst naturally spreads over ~a second of head movement.
-    private func captureNext(remaining: Int, collected: [UIImage]) {
-        guard remaining > 0 else {
-            DispatchQueue.main.async {
-                self.lastPhoto = collected.last
-                self.captureDelegate = nil
+            let delegate = PhotoCaptureDelegate { [weak self] image in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    self.lastPhoto = image
+                    self.captureDelegate = nil
+                }
+                self.processCapturedPhoto(image)
             }
-            if collected.count > 1 {
-                processCapturedBurst(collected)
-            } else {
-                processCapturedPhoto(collected.first)
-            }
-            return
+            self.captureDelegate = delegate
+            self.photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: delegate)
         }
-
-        let delegate = PhotoCaptureDelegate { [weak self] image in
-            guard let self else { return }
-            var images = collected
-            if let image { images.append(image) }
-            self.sessionQueue.async {
-                self.captureNext(remaining: remaining - 1, collected: images)
-            }
-        }
-        captureDelegate = delegate
-        photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: delegate)
     }
 
     /// Crops the muzzle from the captured still. The live cow gate already decided
@@ -464,47 +451,6 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
-    /// Scores every still in an automatic burst with the muzzle detector and
-    /// continues the pipeline with the single best one — the rest are dropped.
-    private func processCapturedBurst(_ images: [UIImage]) {
-        videoQueue.async { [weak self] in
-            guard let self else { return }
-
-            // Hub frame collection has no muzzle to score; take the first still.
-            if case .collectFrames = self.purpose {
-                self.finishFrameSuccess(frame: images.first)
-                return
-            }
-
-            var bestImage: UIImage?
-            var bestCG: CGImage?
-            var bestDetection: MuzzleDetection?
-            for image in images {
-                guard let cg = image.normalizedCGImage() else { continue }
-                let top = self.muzzleDetector.detections(in: cg, orientation: .up)
-                    .max(by: { $0.confidence < $1.confidence })
-                if let top, top.confidence > (bestDetection?.confidence ?? -1) {
-                    bestImage = image
-                    bestCG = cg
-                    bestDetection = top
-                }
-            }
-
-            let conf = bestDetection?.confidence ?? 0
-            let confText = String(format: "Muzzle %.2f · best of %d", conf, images.count)
-
-            guard let bestDetection, let bestCG,
-                  bestDetection.confidence >= self.muzzleConfidenceThreshold,
-                  let crop = self.muzzleDetector.cropMuzzle(from: bestCG, boundingBox: bestDetection.boundingBox)
-            else {
-                self.finishFailure("camera.fail.crop", confidence: confText)
-                return
-            }
-
-            DispatchQueue.main.async { self.lastPhoto = bestImage }
-            self.finishSuccess(crop: crop, fullFrame: bestImage, confidence: bestDetection.confidence, confidenceText: confText)
-        }
-    }
 
     private func finishSuccess(crop: UIImage, fullFrame: UIImage?, confidence: Float, confidenceText: String) {
         DispatchQueue.main.async {
@@ -529,8 +475,11 @@ final class CameraModel: NSObject, ObservableObject {
                     // Burst complete — stay paused; the view triggers submission.
                     self.readyToSubmit = true
                 } else {
-                    // Re-arm for the next crop in the burst.
-                    self.rearmForNextEnrollCrop()
+                    // Brief beat before re-arming so the farmer sees the count
+                    // tick and scans fire at a readable rhythm, not machine-gun.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+                        self.rearmForNextEnrollCrop()
+                    }
                 }
             case .collectMuzzles:
                 self.collectedCrops.append(crop)
@@ -543,7 +492,9 @@ final class CameraModel: NSObject, ObservableObject {
                 if self.collectedCrops.count >= self.collectTarget {
                     self.collectComplete = true
                 } else {
-                    self.rearmForNextEnrollCrop()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+                        self.rearmForNextEnrollCrop()
+                    }
                 }
             case .collectFrames:
                 // Frame collection runs through finishFrameSuccess, not here.
@@ -822,16 +773,20 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             if !recentCow {
                 qualifyingSince = nil
                 lastCowHit = nil
+                muzzleSeekSince = nil
             }
         }
 
         let counting = qualifyingSince != nil
         let remaining = qualifyingSince.map { holdDuration - now.timeIntervalSince($0) } ?? holdDuration
-        let countdownValue: Int? = counting ? max(1, Int(ceil(remaining))) : nil
+        let seeking = counting && remaining <= 0
+        let countdownValue: Int? = counting && remaining > 0 ? max(1, Int(ceil(remaining))) : nil
         let showGreen = cowStable || counting
 
         let readout: String
-        if counting, let cowBest {
+        if seeking {
+            readout = "camera.seekMuzzle"
+        } else if counting, let cowBest {
             let box = cowBest.boundingBox
             readout = String(
                 format: "Cow conf %.2f · size %.0f%%×%.0f%% · holding…",
@@ -869,15 +824,20 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             self?.countdown = countdownValue
         }
 
-        if counting, remaining <= 0 {
-            hasAutoCaptured = true
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.countdown = nil
-                // Burst only when a muzzle crop is the goal; plain frame grabs
-                // (profile / cow body) have nothing to score a burst against.
-                let wantsMuzzle = self.purpose != .collectFrames
-                self.capturePhoto(burstCount: wantsMuzzle ? Self.autoBurstCount : 1)
+        if seeking {
+            // Hold complete — don't fire blind. Watch the live feed for an actual
+            // muzzle so the still catches the head facing the camera; give up and
+            // fire anyway after the seek window so a stubborn pose still captures.
+            if muzzleSeekSince == nil { muzzleSeekSince = now }
+            let liveMuzzle = muzzleDetector.detections(in: pixelBuffer, orientation: .up)
+                .map(\.confidence).max() ?? 0
+            let seekExpired = now.timeIntervalSince(muzzleSeekSince ?? now) >= muzzleSeekTimeout
+            if liveMuzzle >= liveMuzzleThreshold || seekExpired {
+                hasAutoCaptured = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.countdown = nil
+                    self?.capturePhoto()
+                }
             }
         }
     }
@@ -1323,6 +1283,17 @@ struct CameraScreen: View {
                         .background(
                             Capsule().fill(AgriColors.purpleDark.opacity(0.06))
                         )
+                }
+
+                if model.isContacting {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(AgriColors.purple)
+                        Text(lang.t("camera.searching"))
+                            .font(AgriFont.semibold(14))
+                            .foregroundStyle(AgriColors.purpleDark.opacity(0.85))
+                    }
+                    .padding(.vertical, 4)
                 }
 
                 if let cropped = model.croppedMuzzle {
