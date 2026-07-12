@@ -11,6 +11,7 @@ animal (expect: unknown). Cleans up its rows afterwards."""
 import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -86,3 +87,63 @@ async def test_enroll_then_identify_rank1(embedder):
         assert d.decision == "unknown", f"open-set leak: {d}"
     finally:
         await pool.execute("delete from animals where owner = $1::uuid", owner)
+
+
+def _unit_vec(axis: int, dim: int = 2152) -> np.ndarray:
+    v = np.zeros(dim, dtype=np.float32)
+    v[axis] = 1.0
+    return v
+
+
+def _vec_with_sim(sim: float, ortho_axis: int) -> np.ndarray:
+    """Unit vector at exact cosine `sim` to the query axis e0, tilted along e_ortho."""
+    v = sim * _unit_vec(0) + np.sqrt(1.0 - sim**2) * _unit_vec(ortho_axis)
+    return v.astype(np.float32)
+
+
+async def test_mean_of_top3_resists_single_outlier():
+    """A single rogue 0.95 embedding must not beat an animal whose 3 embeddings
+    all sit at 0.80 (the old max rule would pick the rogue). Also proves an
+    animal with fewer than sim_top_m embeddings is averaged over what it has."""
+    from app import db
+
+    owner = os.environ["TEST_OWNER_UID"]
+    pool = await db.get_pool()
+    q = _unit_vec(0)
+    names = ("steady", "outlier", "two-shot")
+    try:
+        ids = {}
+        for name in names:
+            ids[name] = await pool.fetchval(
+                "insert into animals (owner, name) values ($1::uuid, $2) returning id::text",
+                owner, name,
+            )
+        await db.insert_embeddings(
+            ids["steady"], owner,
+            np.stack([_vec_with_sim(0.80, i) for i in (1, 2, 3)]),
+            [f"t/steady/{i}.jpg" for i in range(3)],
+        )
+        await db.insert_embeddings(
+            ids["outlier"], owner,
+            np.stack([_vec_with_sim(0.95, 4), _vec_with_sim(0.10, 5), _vec_with_sim(0.10, 6)]),
+            [f"t/outlier/{i}.jpg" for i in range(3)],
+        )
+        await db.insert_embeddings(
+            ids["two-shot"], owner,
+            np.stack([_vec_with_sim(0.70, 7), _vec_with_sim(0.70, 8)]),
+            [f"t/two-shot/{i}.jpg" for i in range(2)],
+        )
+
+        cands = await db.match(q, owner)
+        by_id = {c.animal_id: c for c in cands}
+        assert cands[0].animal_id == ids["steady"], cands
+        assert by_id[ids["steady"]].sim == pytest.approx(0.80, abs=1e-3)
+        assert by_id[ids["outlier"]].sim == pytest.approx((0.95 + 0.10 + 0.10) / 3, abs=1e-3)
+        assert by_id[ids["outlier"]].max_sim == pytest.approx(0.95, abs=1e-3)
+        assert by_id[ids["two-shot"]].sim == pytest.approx(0.70, abs=1e-3)
+        assert by_id[ids["two-shot"]].max_sim == pytest.approx(0.70, abs=1e-3)
+    finally:
+        await pool.execute(
+            "delete from animals where owner = $1::uuid and name = any($2::text[])",
+            owner, list(names),
+        )
