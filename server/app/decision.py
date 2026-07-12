@@ -1,6 +1,6 @@
 """Open-set decision rule from the bakeoff: accept the top animal only if its
 similarity clears the threshold AND beats the runner-up animal by the margin.
-Candidates are per-animal max-cosine scores, ordered best-first."""
+Candidates are per-animal mean-of-top-m cosine scores, ordered best-first."""
 from dataclasses import dataclass
 
 
@@ -8,7 +8,8 @@ from dataclasses import dataclass
 class Candidate:
     animal_id: str
     name: str | None
-    sim: float
+    sim: float  # mean of the animal's top-m cosine sims (ranking/decision score)
+    max_sim: float | None = None  # best single-embedding sim, telemetry only
 
 
 @dataclass

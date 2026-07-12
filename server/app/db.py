@@ -6,7 +6,10 @@ Vectors are passed as pgvector text literals and cast in SQL — no client-side
 codec registration needed, which also keeps the pooler happy.
 
 Matching is an exact scan by design (no vector index): pgvector caps HNSW at
-2000 dims (MiewID is 2152) and exact scan is ~0.2 ms at 1k vectors anyway."""
+2000 dims (MiewID is 2152) and exact scan is ~0.2 ms at 1k vectors anyway.
+Each animal is scored by the mean of its sim_top_m closest embeddings (robust
+to a single rogue enrollment frame); its single best sim rides along for
+telemetry."""
 import asyncio
 import json
 
@@ -40,12 +43,18 @@ async def get_pool() -> asyncpg.Pool:
 
 
 MATCH_SQL = """
-select a.id::text as animal_id, a.name, max(1 - (e.vec <=> $1::vector)) as sim
-from embeddings e
-join animals a on a.id = e.animal_id and a.deleted_at is null
-where e.owner = $2::uuid
-  and e.model_name = $3
-group by a.id, a.name
+select animal_id, name, avg(sim) as sim, max(sim) as max_sim
+from (
+    select a.id::text as animal_id, a.name,
+           1 - (e.vec <=> $1::vector) as sim,
+           row_number() over (partition by a.id order by e.vec <=> $1::vector) as rn
+    from embeddings e
+    join animals a on a.id = e.animal_id and a.deleted_at is null
+    where e.owner = $2::uuid
+      and e.model_name = $3
+) ranked
+where rn <= $4
+group by animal_id, name
 order by sim desc
 limit 5
 """
@@ -60,8 +69,14 @@ ANIMAL_OWNED_SQL = "select 1 from animals where id = $1::uuid and owner = $2::uu
 
 async def match(vec: np.ndarray, owner: str) -> list[Candidate]:
     pool = await get_pool()
-    rows = await pool.fetch(MATCH_SQL, vector_literal(vec), owner, get_settings().embedding_model_name)
-    return [Candidate(r["animal_id"], r["name"], float(r["sim"])) for r in rows]
+    s = get_settings()
+    rows = await pool.fetch(
+        MATCH_SQL, vector_literal(vec), owner, s.embedding_model_name, s.sim_top_m
+    )
+    return [
+        Candidate(r["animal_id"], r["name"], float(r["sim"]), float(r["max_sim"]))
+        for r in rows
+    ]
 
 
 async def animal_owned(animal_id: str, owner: str) -> bool:

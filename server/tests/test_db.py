@@ -37,6 +37,15 @@ def test_match_sql_excludes_soft_deleted():
     assert "a.deleted_at is null" in MATCH_SQL
 
 
+def test_match_sql_mean_of_top_m():
+    # Per-animal score = avg of the m closest embeddings (rn <= $4), plus the
+    # raw best-single sim for telemetry.
+    assert "row_number() over (partition by a.id" in MATCH_SQL
+    assert "rn <= $4" in MATCH_SQL
+    assert "avg(sim)" in MATCH_SQL
+    assert "max(sim) as max_sim" in MATCH_SQL
+
+
 def test_insert_sql_records_model_name():
     assert "model_name" in INSERT_SQL
     assert "$5" in INSERT_SQL
