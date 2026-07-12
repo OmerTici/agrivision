@@ -155,11 +155,21 @@ async def identify(image: UploadFile = File(...), uid: str = Depends(current_uid
             decision_threshold=s.sim_threshold,
             margin_threshold=s.sim_margin,
             candidates=[
-                {"animal_id": _id_tail(c.animal_id), "sim": round(c.sim, 4)}
+                {
+                    "animal_id": _id_tail(c.animal_id),
+                    "sim": round(c.sim, 4),
+                    "max_sim": round(c.max_sim, 4) if c.max_sim is not None else None,
+                }
                 for c in candidates[:3]
             ],
             candidate_count=len(candidates),
         )
+        if candidates:
+            # Dual-score telemetry: mean-of-top-m is the live rule; max-sim is
+            # what the old rule would have scored. Collected for recalibration.
+            rlog.detail["top_mean_sim"] = round(candidates[0].sim, 4)
+            if candidates[0].max_sim is not None:
+                rlog.detail["top_max_sim"] = round(candidates[0].max_sim, 4)
         return IdentifyResponse(
             decision=d.decision,
             animal_id=d.animal_id,

@@ -214,7 +214,7 @@ def test_enroll_writes_event(client, jpeg_bytes, monkeypatch):
 
 def test_identify_identified_writes_event(client, jpeg_bytes, monkeypatch):
     async def fake_match(vec, owner):
-        return [Candidate(ANIMAL, "Bessie", 0.91), Candidate("other", None, 0.60)]
+        return [Candidate(ANIMAL, "Bessie", 0.91, 0.95), Candidate("other", None, 0.60, 0.70)]
 
     monkeypatch.setattr(main_mod.db, "match", fake_match)
     recorded = _capture_events(monkeypatch)
@@ -231,6 +231,11 @@ def test_identify_identified_writes_event(client, jpeg_bytes, monkeypatch):
     assert e["model_name"] == MODEL
     assert e["detail"]["candidate_count"] == 2
     assert e["detail"]["candidates"][0]["sim"] == pytest.approx(0.91)
+    # Dual-score telemetry: raw max-sim logged next to the mean-of-top-m score
+    # so threshold/margin can be re-fit from live traffic.
+    assert e["detail"]["candidates"][0]["max_sim"] == pytest.approx(0.95)
+    assert e["detail"]["top_mean_sim"] == pytest.approx(0.91)
+    assert e["detail"]["top_max_sim"] == pytest.approx(0.95)
     assert "embed_ms" in e["detail"] and "match_ms" in e["detail"]
 
 
