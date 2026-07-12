@@ -13,8 +13,14 @@ class Settings(BaseSettings):
 
     # Open-set decision rule — tuned for 5-photo enrollment (2026-06-11 recalibration;
     # bakeoff suggested_threshold 0.7746 assumed ~15-image galleries).
+    # CAUTION: threshold/margin were calibrated on per-animal MAX cosine; the
+    # ranking score is now mean-of-top-m, which runs systematically lower.
+    # Re-fit both from events.detail top_max_sim / top_mean_sim telemetry.
     sim_threshold: float = 0.60
     sim_margin: float = 0.05
+    # Per-animal score = mean of the animal's sim_top_m closest embeddings
+    # (robust to a single rogue enrollment frame; no gallery-size bias).
+    sim_top_m: int = 3
     # Embedding-space identifier. Matching filters to this value because vectors
     # from different model versions are not comparable. Change this only when
     # deploying a new embedder and re-embedding enrolled animals.
