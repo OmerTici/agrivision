@@ -701,11 +701,14 @@ final class CameraModel: NSObject, ObservableObject {
     @MainActor
     func runIdentify(using service: RecognitionService) async {
         guard let crop = croppedMuzzle, let jpeg = ImageEncoding.muzzleJPEG(crop) else { return }
+        // Send the uncropped frame too, when available, so the embedder team
+        // gets the raw image alongside the crop. Never blocks matching.
+        let frameJpeg = lastPhoto.flatMap { ImageEncoding.fullBodyJPEG($0) }
         isContacting = true
         recognitionError = nil
         defer { isContacting = false }
         do {
-            identifyResult = try await service.identify(jpegData: jpeg)
+            identifyResult = try await service.identify(jpegData: jpeg, frameData: frameJpeg)
         } catch {
             recognitionError = Self.localizedRecognitionMessage(for: error)
         }

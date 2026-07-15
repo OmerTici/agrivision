@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db
+from app import db, storage
 from app.auth import current_uid
 from app.main import app, state
 
@@ -27,8 +27,12 @@ def client(monkeypatch):
     async def _noop_insert_event(*args, **kwargs):
         return None
 
-    # Unit tests never touch Postgres; event-asserting tests re-stub this.
+    async def _noop_upload(path, data):
+        return path
+
+    # Unit tests never touch Postgres or Storage; asserting tests re-stub these.
     monkeypatch.setattr(db, "insert_event", _noop_insert_event)
+    monkeypatch.setattr(storage, "upload_jpeg", _noop_upload)
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()

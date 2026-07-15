@@ -62,10 +62,13 @@ final class CloudRunRecognitionService: ObservableObject, RecognitionService {
         }
     }
 
-    func identify(jpegData: Data) async throws -> IdentifyResult {
+    func identify(jpegData: Data, frameData: Data?) async throws -> IdentifyResult {
         guard let token = await tokenProvider() else { throw RecognitionError.notAuthenticated }
         var form = MultipartFormData()
         form.appendFile(name: "image", filename: "muzzle.jpg", mimeType: "image/jpeg", data: jpegData)
+        if let frameData {
+            form.appendFile(name: "frame_image", filename: "frame.jpg", mimeType: "image/jpeg", data: frameData)
+        }
         let request = makeRequest(path: "identify", form: form, token: token)
         return try await send(request, decode: IdentifyResult.self)
     }

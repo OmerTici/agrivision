@@ -130,12 +130,32 @@ async def health():
     )
 
 
+async def _save_identify_images(owner: str, request_id: str, crop: bytes, frame: bytes | None) -> None:
+    """Persist an identify capture for the embedder team — the cropped muzzle
+    that was matched plus its raw uncropped frame. Best-effort: a storage
+    failure must never break a live identify, so it's logged and swallowed."""
+    try:
+        await storage.upload_jpeg(storage.identify_object_path(owner, request_id, "muzzle"), crop)
+        if frame is not None:
+            await storage.upload_jpeg(storage.identify_object_path(owner, request_id, "frame"), frame)
+    except Exception:
+        logger.exception("identify image save failed (request_id=%s)", request_id)
+
+
 @app.post("/identify", response_model=IdentifyResponse)
-async def identify(image: UploadFile = File(...), uid: str = Depends(current_uid)):
+async def identify(
+    image: UploadFile = File(...),
+    frame_image: UploadFile | None = File(default=None),
+    uid: str = Depends(current_uid),
+):
     rlog = _RequestLog("identify", uid)
     try:
         raw = await image.read()
         rlog.detail["image_bytes"] = len(raw)
+        # Raw uncropped frame behind the muzzle crop — stored for the embedder
+        # team, never embedded. Optional so older clients keep working.
+        frame_bytes = await frame_image.read() if frame_image is not None else None
+        rlog.detail["frame_bytes"] = len(frame_bytes) if frame_bytes is not None else 0
         pil = _decode_jpegs([raw])
         rlog.detail["image_sizes"] = [{"width": pil[0].width, "height": pil[0].height}]
         embed_started = time.perf_counter()
@@ -170,6 +190,8 @@ async def identify(image: UploadFile = File(...), uid: str = Depends(current_uid
             rlog.detail["top_mean_sim"] = round(candidates[0].sim, 4)
             if candidates[0].max_sim is not None:
                 rlog.detail["top_max_sim"] = round(candidates[0].max_sim, 4)
+        # Keep the capture (crop + raw frame) for the embedder team's dataset.
+        await _save_identify_images(uid, rlog.request_id, raw, frame_bytes)
         return IdentifyResponse(
             decision=d.decision,
             animal_id=d.animal_id,

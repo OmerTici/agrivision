@@ -4,7 +4,10 @@ protocol RecognitionService {
     /// Pings the embedder to start a container (cold-start budget); updates `status`
     /// (from which `isReady` derives).
     func warmUp() async
-    func identify(jpegData: Data) async throws -> IdentifyResult
+    /// `frameData` is the raw uncropped frame behind the muzzle crop — stored
+    /// server-side for the embedder team, never used for matching. Pass nil
+    /// when there's no frame to send.
+    func identify(jpegData: Data, frameData: Data?) async throws -> IdentifyResult
     /// `fullJpegs` carries the optional full-frame photos (best muzzle frame,
     /// profile picture, and any cow body photos) — all stored server-side as
     /// `full_images` and shown in the app's gallery. `frameJpegs` carries the
@@ -33,7 +36,7 @@ final class MockRecognitionService: ObservableObject, RecognitionService {
     }
 
     func warmUp() async { isReady = true }
-    func identify(jpegData: Data) async throws -> IdentifyResult { identifyResult }
+    func identify(jpegData: Data, frameData: Data?) async throws -> IdentifyResult { identifyResult }
     func enroll(animalID: String, muzzleJpegs: [Data], fullJpegs: [Data], frameJpegs: [Data]) async throws -> EnrollResult {
         enrollResult
     }

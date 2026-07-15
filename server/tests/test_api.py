@@ -56,6 +56,77 @@ def test_identify_invalid_image_is_422(client):
     assert r.status_code == 422
 
 
+def test_identify_saves_crop_and_frame(client, jpeg_bytes, monkeypatch):
+    uploads = []
+
+    async def fake_match(vec, owner):
+        return [Candidate(ANIMAL, "Bessie", 0.91)]
+
+    async def fake_upload(path, data):
+        uploads.append(path)
+        return path
+
+    monkeypatch.setattr(main_mod.db, "match", fake_match)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
+
+    r = client.post(
+        "/identify",
+        files={
+            "image": ("m.jpg", jpeg_bytes, "image/jpeg"),
+            "frame_image": ("f.jpg", jpeg_bytes, "image/jpeg"),
+        },
+    )
+    assert r.status_code == 200
+    # Both the crop and the raw frame land under the reserved _identify segment,
+    # sharing the request_id stem so they can be paired.
+    assert sum("/_identify/muzzle/" in p for p in uploads) == 1
+    assert sum("/_identify/frame/" in p for p in uploads) == 1
+    muzzle = next(p for p in uploads if "/_identify/muzzle/" in p)
+    frame = next(p for p in uploads if "/_identify/frame/" in p)
+    assert muzzle.rsplit("/", 1)[1] == frame.rsplit("/", 1)[1]  # same stem
+
+
+def test_identify_without_frame_still_saves_crop(client, jpeg_bytes, monkeypatch):
+    uploads = []
+
+    async def fake_match(vec, owner):
+        return [Candidate(ANIMAL, "Bessie", 0.91)]
+
+    async def fake_upload(path, data):
+        uploads.append(path)
+        return path
+
+    monkeypatch.setattr(main_mod.db, "match", fake_match)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
+
+    r = client.post("/identify", files={"image": ("m.jpg", jpeg_bytes, "image/jpeg")})
+    assert r.status_code == 200  # older clients that send no frame still work
+    assert sum("/_identify/muzzle/" in p for p in uploads) == 1
+    assert sum("/_identify/frame/" in p for p in uploads) == 0
+
+
+def test_identify_survives_storage_failure(client, jpeg_bytes, monkeypatch):
+    async def fake_match(vec, owner):
+        return [Candidate(ANIMAL, "Bessie", 0.91)]
+
+    async def boom_upload(path, data):
+        raise RuntimeError("storage down")
+
+    monkeypatch.setattr(main_mod.db, "match", fake_match)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", boom_upload)
+
+    # Dataset save is best-effort — a storage failure must not break identify.
+    r = client.post(
+        "/identify",
+        files={
+            "image": ("m.jpg", jpeg_bytes, "image/jpeg"),
+            "frame_image": ("f.jpg", jpeg_bytes, "image/jpeg"),
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["decision"] == "identified"
+
+
 def test_enroll_batches_and_inserts(client, jpeg_bytes, monkeypatch):
     inserted = {}
 
