@@ -126,6 +126,26 @@ final class CameraModel: NSObject, ObservableObject {
         }
     }
 
+    /// Which recognizer the identify camera runs: muzzle matching (default) or
+    /// ear-tag OCR. Only offered on the identify tab — collection/enroll
+    /// sessions are always muzzle-based.
+    enum ScanMode: String, CaseIterable {
+        case muzzle
+        case earTag
+
+        var key: String {
+            switch self {
+            case .muzzle: return "camera.scanMode.muzzle"
+            case .earTag: return "camera.scanMode.earTag"
+            }
+        }
+    }
+
+    @Published var scanMode: ScanMode = .muzzle
+    /// Ear-tag OCR result, set once the same tag is read on consecutive passes
+    /// (single misreads never lock). nil while still scanning.
+    @Published var detectedTag: String?
+
     @Published var status: Status = .idle
     @Published var captureMode: CaptureMode = .automatic
     @Published var lastPhoto: UIImage?
@@ -186,8 +206,21 @@ final class CameraModel: NSObject, ObservableObject {
     // Detection / auto-capture state (touched only on videoQueue).
     private let cowDetector = CowDetectorService()
     private let muzzleDetector = MuzzleDetectorService()
+    private let earTagReader = EarTagReaderService()
     private var isAnalyzing = false
     private var hasAutoCaptured = false
+    /// Mirror of `scanMode` for videoQueue (avoid reading @Published off-main).
+    private var isEarTagMode = false
+    /// True once a tag has locked; stops OCR until the result card is dismissed.
+    private var earTagLocked = false
+    /// Throttles the OCR pass — Vision's accurate recognizer is too slow to run
+    /// on every camera frame.
+    private var lastOCRAt: Date?
+    private let ocrInterval: TimeInterval = 0.25
+    /// Consecutive-pass agreement required before a read tag locks.
+    private var pendingTag: String?
+    private var pendingTagStreak = 0
+    private let tagLockStreak = 2
     /// Mirror of `captureMode` for use on `videoQueue` (avoid reading @Published off-main).
     private var isAutomaticMode = true
     /// When the current qualifying streak began.
@@ -313,6 +346,41 @@ final class CameraModel: NSObject, ObservableObject {
             self?.qualifyingSince = nil
             self?.muzzleSeekSince = nil
             self?.hasAutoCaptured = false
+        }
+    }
+
+    /// Switches the identify camera between muzzle matching and ear-tag OCR.
+    func setScanMode(_ mode: ScanMode) {
+        DispatchQueue.main.async {
+            guard self.scanMode != mode else { return }
+            self.scanMode = mode
+            self.detectedTag = nil
+            self.cowVisible = false
+            self.countdown = nil
+            self.debugReadout = mode == .earTag ? "camera.tagHint" : Self.idleReadout
+        }
+        videoQueue.async { [weak self] in
+            self?.isEarTagMode = mode == .earTag
+            self?.earTagLocked = false
+            self?.pendingTag = nil
+            self?.pendingTagStreak = 0
+            self?.qualifyingSince = nil
+            self?.muzzleSeekSince = nil
+            self?.hasAutoCaptured = false
+        }
+    }
+
+    /// Clears a locked tag result and re-arms ear-tag scanning.
+    func resetEarTag() {
+        DispatchQueue.main.async {
+            self.detectedTag = nil
+            self.cowVisible = false
+            self.debugReadout = "camera.tagHint"
+        }
+        videoQueue.async { [weak self] in
+            self?.earTagLocked = false
+            self?.pendingTag = nil
+            self?.pendingTagStreak = 0
         }
     }
 
@@ -750,10 +818,49 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         isAnalyzing = true
         defer { isAnalyzing = false }
 
-        if isAutomaticMode {
+        if isEarTagMode {
+            processEarTagFrame(pixelBuffer)
+        } else if isAutomaticMode {
             processAutomaticFrame(pixelBuffer)
         } else {
             processManualFrame(pixelBuffer)
+        }
+    }
+
+    /// Ear-tag mode: OCR the live frame (throttled), and lock the tag once the
+    /// same read repeats on consecutive passes — one glitchy read never wins.
+    private func processEarTagFrame(_ pixelBuffer: CVPixelBuffer) {
+        guard !earTagLocked else { return }
+        let now = Date()
+        if let last = lastOCRAt, now.timeIntervalSince(last) < ocrInterval { return }
+        lastOCRAt = now
+
+        guard let tag = earTagReader.readTag(in: pixelBuffer, orientation: .up) else {
+            pendingTag = nil
+            pendingTagStreak = 0
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.scanMode == .earTag else { return }
+                self.cowVisible = false
+                self.debugReadout = "camera.tagHint"
+            }
+            return
+        }
+
+        if tag == pendingTag {
+            pendingTagStreak += 1
+        } else {
+            pendingTag = tag
+            pendingTagStreak = 1
+        }
+
+        let locked = pendingTagStreak >= tagLockStreak
+        if locked { earTagLocked = true }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.scanMode == .earTag else { return }
+            self.cowVisible = true
+            self.debugReadout = tag
+            if locked { self.detectedTag = tag }
         }
     }
 
@@ -951,6 +1058,7 @@ struct CameraScreen: View {
     var onRequestEnroll: (_ muzzleCrop: UIImage?, _ fullFrame: UIImage?) -> Void = { _, _ in }
 
     @EnvironmentObject private var recognition: CloudRunRecognitionService
+    @EnvironmentObject private var store: HerdStore
     @StateObject private var model = CameraModel()
     @ObservedObject private var lang = LanguageManager.shared
     @State private var flash = false
@@ -1063,6 +1171,11 @@ struct CameraScreen: View {
                 identifyOverlay
             }
 
+            if collection == nil, enrollAnimalID == nil,
+               model.scanMode == .earTag, let tag = model.detectedTag {
+                earTagOverlay(tag: tag)
+            }
+
             if !recognition.isReady {
                 wakingBanner
             }
@@ -1103,6 +1216,11 @@ struct CameraScreen: View {
                 generator.notificationOccurred(.error)
             }
         }
+        .onChange(of: model.detectedTag) { _, tag in
+            guard tag != nil else { return }
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+        }
         .onChange(of: model.readyToSubmit) { _, ready in
             guard ready else { return }
             // Consume the flag immediately so this fires exactly once per burst.
@@ -1128,6 +1246,9 @@ struct CameraScreen: View {
     }
 
     private var scanBracketColor: Color {
+        if model.scanMode == .earTag {
+            return model.cowVisible ? AgriColors.successGreen : .white
+        }
         switch model.captureMode {
         case .automatic:
             return model.cowVisible ? AgriColors.successGreen : .white
@@ -1137,6 +1258,9 @@ struct CameraScreen: View {
     }
 
     private var scanHint: String {
+        if model.scanMode == .earTag {
+            return lang.t("camera.tagHint")
+        }
         switch model.captureMode {
         case .automatic:
             return lang.t(model.cowVisible ? "camera.hint.hold" : "camera.hint.point")
@@ -1187,17 +1311,29 @@ struct CameraScreen: View {
             .padding(.horizontal, 20)
             .padding(.top, 12)
 
-            // No mode toggle during ungated frame collection — there's no cow gate,
-            // so "Automatic" has nothing to trigger on.
-            if model.status == .authorized && !model.showsResultOverlay && !model.ungatedCapture {
-                captureModePicker
+            // Muzzle vs ear-tag recognizer — identify tab only; hub collection
+            // and enrollment sessions are always muzzle-based.
+            if collection == nil, enrollAnimalID == nil,
+               model.status == .authorized, !model.showsResultOverlay, model.detectedTag == nil {
+                scanModePicker
                     .padding(.horizontal, 40)
                     .padding(.top, 16)
             }
 
+            // No mode toggle during ungated frame collection — there's no cow gate,
+            // so "Automatic" has nothing to trigger on. Ear-tag OCR has no shutter
+            // either, so the toggle only applies to muzzle scanning.
+            if model.status == .authorized && !model.showsResultOverlay && !model.ungatedCapture
+                && model.scanMode == .muzzle {
+                captureModePicker
+                    .padding(.horizontal, 40)
+                    .padding(.top, model.scanMode == .muzzle && collection == nil && enrollAnimalID == nil ? 10 : 16)
+            }
+
             Spacer()
 
-            if model.status == .authorized && !model.showsResultOverlay && model.captureMode == .manual {
+            if model.status == .authorized && !model.showsResultOverlay
+                && model.captureMode == .manual && model.scanMode == .muzzle {
                 Button(action: capture) {
                     ZStack {
                         Circle()
@@ -1218,6 +1354,101 @@ struct CameraScreen: View {
                 .padding(.bottom, 36)
             }
         }
+    }
+
+    /// The herd animal whose tag matches an OCR read, if any (compared with
+    /// punctuation/case stripped, so "TR-0412" matches "TR 0412").
+    private func animalForTag(_ tag: String) -> Animal? {
+        let wanted = EarTagReaderService.normalize(tag)
+        return store.animals.first { EarTagReaderService.normalize($0.tag) == wanted }
+    }
+
+    /// "TR12345678" → "TR 12345678" for display.
+    private func displayTag(_ tag: String) -> String {
+        tag.hasPrefix("TR") ? "TR " + tag.dropFirst(2) : tag
+    }
+
+    /// Result card for a locked ear-tag read: the matched animal, or a
+    /// not-registered notice showing exactly what was read.
+    private func earTagOverlay(tag: String) -> some View {
+        let animal = animalForTag(tag)
+        return VStack {
+            Spacer()
+
+            VStack(spacing: 14) {
+                Image(systemName: animal != nil ? "checkmark.seal.fill" : "questionmark.circle.fill")
+                    .font(.system(size: 50))
+                    .foregroundStyle(animal != nil ? AgriColors.successGreen : Self.unknownAmber)
+
+                Text(animal?.name ?? lang.t("tag.notFound.title"))
+                    .font(AgriFont.bold(22))
+                    .foregroundStyle(AgriColors.purpleDark)
+                    .multilineTextAlignment(.center)
+
+                Text(displayTag(tag))
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(AgriColors.purpleDark.opacity(0.75))
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 14)
+                    .background(Capsule().fill(AgriColors.purpleDark.opacity(0.06)))
+
+                if animal == nil {
+                    Text(lang.t("tag.notFound.msg"))
+                        .font(AgriFont.regular(15))
+                        .foregroundStyle(AgriColors.purpleDark.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                }
+
+                Button {
+                    model.resetEarTag()
+                } label: {
+                    Text(lang.t("camera.scanAgain"))
+                        .font(AgriFont.semibold(17))
+                        .foregroundStyle(AgriColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(AgriColors.purple)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(AgriColors.white)
+            )
+            .padding(.horizontal, 28)
+
+            Spacer()
+        }
+        .background(Color.black.opacity(0.35).ignoresSafeArea())
+        .transition(.opacity)
+    }
+
+    private var scanModePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(CameraModel.ScanMode.allCases, id: \.self) { mode in
+                Button {
+                    model.setScanMode(mode)
+                } label: {
+                    Text(lang.t(mode.key))
+                        .font(AgriFont.semibold(14))
+                        .foregroundStyle(
+                            model.scanMode == mode ? AgriColors.purpleDark : AgriColors.white
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            model.scanMode == mode
+                                ? AgriColors.white
+                                : Color.clear
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(Color.black.opacity(0.45))
+        .clipShape(Capsule())
     }
 
     private var captureModePicker: some View {
