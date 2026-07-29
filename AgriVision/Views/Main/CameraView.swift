@@ -1,5 +1,4 @@
 import AVFoundation
-import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -1066,9 +1065,6 @@ struct CameraScreen: View {
     @State private var showResult = false
     /// Zoom factor at the start of the current pinch; the gesture scales from here.
     @State private var zoomAnchor: CGFloat = 1.0
-    /// Debug/testing: pick an image from the library and run the real models on
-    /// it — bypasses the camera so screen-photo moiré can't corrupt the test.
-    @State private var testPickerItem: PhotosPickerItem?
 
     /// Yellow-orange used for the "unrecognized animal" prompt.
     private static let unknownAmber = Color(red: 0.95, green: 0.62, blue: 0.18)
@@ -1233,16 +1229,6 @@ struct CameraScreen: View {
         .sheet(isPresented: $showResult) {
             MuzzleResultSheet(cropped: model.croppedMuzzle, full: model.lastPhoto)
         }
-        .onChange(of: testPickerItem) { _, item in
-            guard let item else { return }
-            Task {
-                if let data = try? await item.loadTransferable(type: Data.self),
-                   let image = UIImage(data: data) {
-                    model.analyzeImported(image)
-                }
-                testPickerItem = nil
-            }
-        }
     }
 
     private var scanBracketColor: Color {
@@ -1287,16 +1273,31 @@ struct CameraScreen: View {
 
                 Spacer()
 
-                // Test-from-Photos: runs the real models on a clean library image.
-                PhotosPicker(selection: $testPickerItem, matching: .images) {
-                    Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(AgriColors.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color.black.opacity(0.45))
-                        .clipShape(Circle())
+                // Camera-method menu (identify tab only): Default = muzzle
+                // matching, or ear-tag OCR.
+                if collection == nil, enrollAnimalID == nil {
+                    Menu {
+                        ForEach(CameraModel.ScanMode.allCases, id: \.self) { mode in
+                            Button {
+                                model.setScanMode(mode)
+                            } label: {
+                                if model.scanMode == mode {
+                                    Label(lang.t(mode.key), systemImage: "checkmark")
+                                } else {
+                                    Text(lang.t(mode.key))
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "camera.badge.ellipsis")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(AgriColors.white)
+                            .frame(width: 40, height: 40)
+                            .background(Color.black.opacity(0.45))
+                            .clipShape(Circle())
+                    }
+                    .padding(.trailing, 10)
                 }
-                .padding(.trailing, 10)
 
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -1311,15 +1312,6 @@ struct CameraScreen: View {
             .padding(.horizontal, 20)
             .padding(.top, 12)
 
-            // Muzzle vs ear-tag recognizer — identify tab only; hub collection
-            // and enrollment sessions are always muzzle-based.
-            if collection == nil, enrollAnimalID == nil,
-               model.status == .authorized, !model.showsResultOverlay, model.detectedTag == nil {
-                scanModePicker
-                    .padding(.horizontal, 40)
-                    .padding(.top, 16)
-            }
-
             // No mode toggle during ungated frame collection — there's no cow gate,
             // so "Automatic" has nothing to trigger on. Ear-tag OCR has no shutter
             // either, so the toggle only applies to muzzle scanning.
@@ -1327,7 +1319,7 @@ struct CameraScreen: View {
                 && model.scanMode == .muzzle {
                 captureModePicker
                     .padding(.horizontal, 40)
-                    .padding(.top, model.scanMode == .muzzle && collection == nil && enrollAnimalID == nil ? 10 : 16)
+                    .padding(.top, 16)
             }
 
             Spacer()
@@ -1423,32 +1415,6 @@ struct CameraScreen: View {
         }
         .background(Color.black.opacity(0.35).ignoresSafeArea())
         .transition(.opacity)
-    }
-
-    private var scanModePicker: some View {
-        HStack(spacing: 0) {
-            ForEach(CameraModel.ScanMode.allCases, id: \.self) { mode in
-                Button {
-                    model.setScanMode(mode)
-                } label: {
-                    Text(lang.t(mode.key))
-                        .font(AgriFont.semibold(14))
-                        .foregroundStyle(
-                            model.scanMode == mode ? AgriColors.purpleDark : AgriColors.white
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            model.scanMode == mode
-                                ? AgriColors.white
-                                : Color.clear
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .background(Color.black.opacity(0.45))
-        .clipShape(Capsule())
     }
 
     private var captureModePicker: some View {

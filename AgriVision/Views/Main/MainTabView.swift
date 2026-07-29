@@ -10,7 +10,6 @@ struct MainTabView: View {
     /// Muzzle carried from an unknown identify result into the Add-Animal hub.
     @State private var carriedMuzzleCrop: UIImage?
     @State private var carriedMuzzleFull: UIImage?
-
     var body: some View {
         ZStack(alignment: .bottom) {
             AgriColors.appBackground
@@ -23,6 +22,7 @@ struct MainTabView: View {
             if selected != .camera {
                 AgriTabBar(selected: $selected)
             }
+
             VStack {
                 ServerStatusPill(status: recognition.status,
                                  lang: lang,
