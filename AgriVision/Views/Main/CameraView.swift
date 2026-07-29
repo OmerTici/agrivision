@@ -216,10 +216,12 @@ final class CameraModel: NSObject, ObservableObject {
     /// on every camera frame.
     private var lastOCRAt: Date?
     private let ocrInterval: TimeInterval = 0.25
-    /// Consecutive-pass agreement required before a read tag locks.
-    private var pendingTag: String?
-    private var pendingTagStreak = 0
-    private let tagLockStreak = 2
+    /// Votes per candidate read this scan session (videoQueue only). Plurality
+    /// voting instead of consecutive-pass: a stable misread can be overtaken
+    /// by the true tag instead of winning a race to two-in-a-row.
+    private var tagVotes: [String: Int] = [:]
+    /// The farmer's herd tags — reads that match one lock sooner (videoQueue only).
+    private var knownTags: [String] = []
     /// Mirror of `captureMode` for use on `videoQueue` (avoid reading @Published off-main).
     private var isAutomaticMode = true
     /// When the current qualifying streak began.
@@ -349,6 +351,8 @@ final class CameraModel: NSObject, ObservableObject {
     }
 
     /// Switches the identify camera between muzzle matching and ear-tag OCR.
+    /// Hard-resets BOTH pipelines: an auto-capture in flight at switch time
+    /// must not surface its result (or popup) under the other mode's UI.
     func setScanMode(_ mode: ScanMode) {
         DispatchQueue.main.async {
             guard self.scanMode != mode else { return }
@@ -356,13 +360,20 @@ final class CameraModel: NSObject, ObservableObject {
             self.detectedTag = nil
             self.cowVisible = false
             self.countdown = nil
+            self.croppedMuzzle = nil
+            self.captureSucceeded = false
+            self.captureFailed = false
+            self.failureMessage = ""
+            self.isProcessing = false
+            self.identifyResult = nil
+            self.recognitionError = nil
+            self.canManualCapture = false
             self.debugReadout = mode == .earTag ? "camera.tagHint" : Self.idleReadout
         }
         videoQueue.async { [weak self] in
             self?.isEarTagMode = mode == .earTag
             self?.earTagLocked = false
-            self?.pendingTag = nil
-            self?.pendingTagStreak = 0
+            self?.tagVotes = [:]
             self?.qualifyingSince = nil
             self?.muzzleSeekSince = nil
             self?.hasAutoCaptured = false
@@ -378,8 +389,7 @@ final class CameraModel: NSObject, ObservableObject {
         }
         videoQueue.async { [weak self] in
             self?.earTagLocked = false
-            self?.pendingTag = nil
-            self?.pendingTagStreak = 0
+            self?.tagVotes = [:]
         }
     }
 
@@ -455,6 +465,9 @@ final class CameraModel: NSObject, ObservableObject {
     }
 
     func capturePhoto() {
+        // Ear-tag mode has no shutter; a stray trigger racing a mode switch
+        // must not fire the muzzle pipeline.
+        if scanMode == .earTag { return }
         // Ungated frame collection ignores the cow gate — the shutter always fires.
         if captureMode == .manual && !canManualCapture && !ungatedCapture { return }
         if isContacting { return }
@@ -521,6 +534,12 @@ final class CameraModel: NSObject, ObservableObject {
 
     private func finishSuccess(crop: UIImage, fullFrame: UIImage?, confidence: Float, confidenceText: String) {
         DispatchQueue.main.async {
+            // A capture that resolves after the user switched to ear-tag mode
+            // would surface a muzzle result under the tag UI — drop it.
+            if self.scanMode == .earTag, case .identify = self.purpose {
+                self.isProcessing = false
+                return
+            }
             self.croppedMuzzle = crop
             self.captureConfidenceText = confidenceText
             self.isProcessing = false
@@ -609,6 +628,12 @@ final class CameraModel: NSObject, ObservableObject {
 
     private func finishFailure(_ messageKey: String, confidence: String) {
         DispatchQueue.main.async {
+            // Same stale-capture guard as finishSuccess: no muzzle failure
+            // cards under the ear-tag UI after a mode switch.
+            if self.scanMode == .earTag, case .identify = self.purpose {
+                self.isProcessing = false
+                return
+            }
             self.croppedMuzzle = nil
             self.captureConfidenceText = confidence
             self.isProcessing = false
@@ -826,8 +851,10 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
     }
 
-    /// Ear-tag mode: OCR the live frame (throttled), and lock the tag once the
-    /// same read repeats on consecutive passes — one glitchy read never wins.
+    /// Ear-tag mode: OCR the live frame (throttled) and lock by plurality vote.
+    /// A read matching a herd tag locks at 2 sightings; an unknown number needs
+    /// 3 AND strictly more votes than any rival, so a stable misread can still
+    /// be overtaken by the true tag as framing improves.
     private func processEarTagFrame(_ pixelBuffer: CVPixelBuffer) {
         guard !earTagLocked else { return }
         let now = Date()
@@ -835,8 +862,6 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastOCRAt = now
 
         guard let tag = earTagReader.readTag(in: pixelBuffer, orientation: .up) else {
-            pendingTag = nil
-            pendingTagStreak = 0
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.scanMode == .earTag else { return }
                 self.cowVisible = false
@@ -845,14 +870,12 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
-        if tag == pendingTag {
-            pendingTagStreak += 1
-        } else {
-            pendingTag = tag
-            pendingTagStreak = 1
-        }
-
-        let locked = pendingTagStreak >= tagLockStreak
+        tagVotes[tag, default: 0] += 1
+        let votes = tagVotes[tag] ?? 0
+        let rivalBest = tagVotes.lazy.filter { $0.key != tag }.map(\.value).max() ?? 0
+        let matchesHerd = knownTags.contains { EarTagReaderService.matches(stored: $0, read: tag) }
+        let needed = matchesHerd ? 2 : 3
+        let locked = votes >= needed && votes > rivalBest
         if locked { earTagLocked = true }
 
         DispatchQueue.main.async { [weak self] in
@@ -860,6 +883,14 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             self.cowVisible = true
             self.debugReadout = tag
             if locked { self.detectedTag = tag }
+        }
+    }
+
+    /// Herd tags used to bias ear-tag locking toward numbers that actually
+    /// exist in this herd. Call whenever the herd list changes.
+    func setKnownTags(_ tags: [String]) {
+        videoQueue.async { [weak self] in
+            self?.knownTags = tags
         }
     }
 
@@ -1178,6 +1209,7 @@ struct CameraScreen: View {
         }
         .onAppear {
             model.start()
+            model.setKnownTags(store.animals.map(\.tag))
             if let req = collection {
                 switch req.kind {
                 case .muzzle: model.beginMuzzleCollection(max: req.max)
@@ -1216,6 +1248,9 @@ struct CameraScreen: View {
             guard tag != nil else { return }
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
+        }
+        .onChange(of: store.animals.map(\.tag)) { _, tags in
+            model.setKnownTags(tags)
         }
         .onChange(of: model.readyToSubmit) { _, ready in
             guard ready else { return }

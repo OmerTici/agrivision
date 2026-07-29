@@ -13,6 +13,9 @@ final class EarTagReaderService {
         request.recognitionLevel = .accurate
         // Critical for digit strings: language correction would "fix" them.
         request.usesLanguageCorrection = false
+        // Ignore small background text (feed bags, screens, keyboards) — a
+        // readable tag serial fills a meaningful slice of the frame height.
+        request.minimumTextHeight = 0.035
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
         do {
