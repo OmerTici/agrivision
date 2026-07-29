@@ -1348,11 +1348,11 @@ struct CameraScreen: View {
         }
     }
 
-    /// The herd animal whose tag matches an OCR read, if any (compared with
-    /// punctuation/case stripped, so "TR-0412" matches "TR 0412").
+    /// The herd animal whose tag matches an OCR read, if any. Exact normalized
+    /// match, or suffix match for serial-only reads where OCR missed the small
+    /// "TR xx" header line.
     private func animalForTag(_ tag: String) -> Animal? {
-        let wanted = EarTagReaderService.normalize(tag)
-        return store.animals.first { EarTagReaderService.normalize($0.tag) == wanted }
+        store.animals.first { EarTagReaderService.matches(stored: $0.tag, read: tag) }
     }
 
     /// "TR12345678" → "TR 12345678" for display.

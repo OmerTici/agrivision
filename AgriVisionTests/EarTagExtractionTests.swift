@@ -29,8 +29,26 @@ final class EarTagExtractionTests: XCTestCase {
         XCTAssertNil(EarTagReaderService.extractTag(from: "TR 0412"))
     }
 
-    func testRejectsPlainNumbersWithoutTR() {
-        XCTAssertNil(EarTagReaderService.extractTag(from: "1234567890"))
+    // Real tag from field testing: "TR 20" small header, "1755219" big serial.
+
+    func testRealTagBothLinesInOrder() {
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "TR 20 1755219"), "TR201755219")
+    }
+
+    func testRealTagLinesOutOfOrderFallsBackToSerial() {
+        // Vision may emit the serial line before the header; the TR-anchored
+        // pattern fails (only 2 digits follow TR) but the serial fallback hits.
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "1755219 TR 20"), "1755219")
+    }
+
+    func testSerialAloneAcceptedWhenHeaderMissed() {
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "1755219"), "1755219")
+    }
+
+    func testRejectsShortDigitRuns() {
+        // Pen numbers, gate numbers etc. — short runs never lock.
+        XCTAssertNil(EarTagReaderService.extractTag(from: "123456"))
+        XCTAssertNil(EarTagReaderService.extractTag(from: "pen 42"))
     }
 
     func testRejectsEmptyAndGarbage() {
@@ -43,5 +61,14 @@ final class EarTagExtractionTests: XCTestCase {
             EarTagReaderService.normalize("tr-12 3456 7890"),
             EarTagReaderService.normalize("TR1234567890")
         )
+    }
+
+    func testMatchesExactAndSerialSuffix() {
+        XCTAssertTrue(EarTagReaderService.matches(stored: "TR-20 1755219", read: "TR201755219"))
+        // Serial-only read matches the stored full tag by suffix.
+        XCTAssertTrue(EarTagReaderService.matches(stored: "TR201755219", read: "1755219"))
+        // But a serial must not match a stored tag it merely resembles.
+        XCTAssertFalse(EarTagReaderService.matches(stored: "TR201755218", read: "1755219"))
+        XCTAssertFalse(EarTagReaderService.matches(stored: "", read: "1755219"))
     }
 }
