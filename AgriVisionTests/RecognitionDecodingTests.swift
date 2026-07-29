@@ -81,7 +81,8 @@ final class RecognitionDecodingTests: XCTestCase {
         }
 
         let service = makeService()
-        let result = try await service.identify(jpegData: Data([0xFF, 0xD8, 0xFF]))
+        let result = try await service.identify(jpegData: Data([0xFF, 0xD8, 0xFF]),
+                                                frameData: Data([0xFF, 0xD8, 0xFF]))
 
         XCTAssertEqual(result.decision, "identified")
         XCTAssertEqual(result.animalId, "a1")
@@ -94,6 +95,7 @@ final class RecognitionDecodingTests: XCTestCase {
 
         let body = String(data: MockURLProtocol.lastRequestBody ?? Data(), encoding: .isoLatin1) ?? ""
         XCTAssertTrue(body.contains("name=\"image\"; filename="))
+        XCTAssertTrue(body.contains("name=\"frame_image\"; filename="))
     }
 
     func testEnrollDecodesResponseAndSendsAllFields() async throws {
@@ -110,7 +112,8 @@ final class RecognitionDecodingTests: XCTestCase {
         let muzzles = (0..<5).map { _ in Data([0xFF, 0xD8, 0xFF]) }
         let result = try await service.enroll(animalID: "abc-123",
                                               muzzleJpegs: muzzles,
-                                              fullJpegs: [Data([0xFF, 0xD8, 0xFF])])
+                                              fullJpegs: [Data([0xFF, 0xD8, 0xFF])],
+                                              frameJpegs: (0..<5).map { _ in Data([0xFF, 0xD8, 0xFF]) })
 
         XCTAssertEqual(result.enrolledCount, 5)
         XCTAssertEqual(result.fullImagesStored, 1)
@@ -119,6 +122,7 @@ final class RecognitionDecodingTests: XCTestCase {
         XCTAssertTrue(body.contains("name=\"animal_id\"\r\n\r\nabc-123"))
         XCTAssertEqual(body.components(separatedBy: "name=\"images\"").count - 1, 5)
         XCTAssertEqual(body.components(separatedBy: "name=\"full_images\"").count - 1, 1)
+        XCTAssertEqual(body.components(separatedBy: "name=\"frame_images\"").count - 1, 5)
     }
 
     func testHTTPErrorThrowsHTTPError() async {
@@ -129,7 +133,7 @@ final class RecognitionDecodingTests: XCTestCase {
         }
         let service = makeService()
         do {
-            _ = try await service.identify(jpegData: Data([0xFF, 0xD8, 0xFF]))
+            _ = try await service.identify(jpegData: Data([0xFF, 0xD8, 0xFF]), frameData: nil)
             XCTFail("expected throw")
         } catch let RecognitionError.http(status, _) {
             XCTAssertEqual(status, 502)
@@ -141,7 +145,7 @@ final class RecognitionDecodingTests: XCTestCase {
     func testMissingTokenThrowsNotAuthenticated() async {
         let service = makeService(token: nil)
         do {
-            _ = try await service.identify(jpegData: Data([0xFF, 0xD8, 0xFF]))
+            _ = try await service.identify(jpegData: Data([0xFF, 0xD8, 0xFF]), frameData: nil)
             XCTFail("expected throw")
         } catch RecognitionError.notAuthenticated {
             // ok
