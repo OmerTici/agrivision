@@ -70,6 +70,13 @@ final class EarTagExtractionTests: XCTestCase {
         XCTAssertEqual(EarTagReaderService.extractTag(from: "1234567 17552190"), "17552190")
     }
 
+    func testNineDigitRunRestoresTRPrefix() {
+        // 9+ digits include the province code — only the letters were missed.
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "201755219"), "TR201755219")
+        // 7-8 digits are the serial alone; never presented as complete.
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "1755219"), "1755219")
+    }
+
     func testSerialKeyPoolsFullAndHeaderlessReads() {
         // Full read, province-only-missed read, and bare serial all pool.
         XCTAssertEqual(

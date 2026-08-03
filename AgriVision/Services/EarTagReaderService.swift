@@ -108,7 +108,14 @@ final class EarTagReaderService {
            (8...14).contains(digits.count) {
             return "TR\(digits)"
         }
-        return allMatches(of: "[0-9]{7,14}", in: text).max(by: { $0.count < $1.count })
+        guard let run = allMatches(of: "[0-9]{7,14}", in: text).max(by: { $0.count < $1.count }) else {
+            return nil
+        }
+        // Every Turkish tag carries "TR"; a 9+ digit run already includes the
+        // province code, so only the letters were missed — restore them for a
+        // complete display. A 7-8 digit run is the serial alone and stays bare:
+        // prefixing it would wrongly present a partial number as complete.
+        return run.count >= 9 ? "TR\(run)" : run
     }
 
     private static func firstDigitGroup(matching pattern: String, in text: String) -> String? {
