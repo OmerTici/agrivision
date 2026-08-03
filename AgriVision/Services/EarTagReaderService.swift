@@ -68,7 +68,10 @@ final class EarTagReaderService {
             let handler = VNImageRequestHandler(cgImage: crop, orientation: .up, options: [:])
             let zoomed = Self.recognize(with: handler, minimumTextHeight: 0)
             if let tag = Self.extractTag(from: Self.joinedText(of: zoomed)) {
-                return EarTagRead(tag: tag, crop: UIImage(cgImage: crop))
+                // Display the natural-orientation crop even when a rotated
+                // attempt produced the read — a tilted/flipped thumbnail reads
+                // as broken to the farmer; humans handle the tilt fine.
+                return EarTagRead(tag: tag, crop: UIImage(cgImage: baseCrop))
             }
         }
         return nil
@@ -229,7 +232,9 @@ final class EarTagReaderService {
             }
         }
         var angle: CGFloat = 0
-        if n > 0 {
+        // A tiny far-away blob gives a noisy axis — rotating by a wrong angle
+        // hurts more than not rotating, so only trust it with enough pixels.
+        if n >= 60 {
             let covXX = sxx / n - (sx / n) * (sx / n)
             let covYY = syy / n - (sy / n) * (sy / n)
             let covXY = -(sxy / n - (sx / n) * (sy / n))
