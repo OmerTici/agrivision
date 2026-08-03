@@ -23,10 +23,17 @@ final class EarTagReaderService {
     private(set) var lastDiagnostic = ""
 
     /// Cheap live-preview probe (~1ms): is a plausible ear-tag blob in frame?
-    /// Drives the green brackets and the auto-capture gate — NO OCR runs on
-    /// live frames; reading happens on a captured full-res still.
+    /// Drives the green brackets and the frame-grab trigger — NO OCR runs on
+    /// live frames; reading happens afterwards on grabbed frames.
     func hasTagBlob(in pixelBuffer: CVPixelBuffer) -> Bool {
         yellowBlobRegion(in: CIImage(cvPixelBuffer: pixelBuffer)) != nil
+    }
+
+    /// Copies a camera frame out of the capture pool so it can be processed
+    /// after the farmer has moved on (~10ms).
+    func snapshot(_ pixelBuffer: CVPixelBuffer) -> CGImage? {
+        let ci = CIImage(cvPixelBuffer: pixelBuffer)
+        return ciContext.createCGImage(ci, from: ci.extent)
     }
 
     /// Reads a captured still. Stills are ~6x the pixels of a video frame with

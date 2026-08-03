@@ -147,6 +147,9 @@ final class CameraModel: NSObject, ObservableObject {
     /// The image region the locked tag was read from — shown on the result
     /// card so the farmer can verify the digits by eye.
     @Published var detectedTagCrop: UIImage?
+    /// True when a grab-and-read round produced no readable tag — shows the
+    /// try-again card.
+    @Published var earTagReadFailed = false
 
     @Published var status: Status = .idle
     @Published var captureMode: CaptureMode = .automatic
@@ -215,9 +218,18 @@ final class CameraModel: NSObject, ObservableObject {
     private var isEarTagMode = false
     /// True once a tag has locked; stops OCR until the result card is dismissed.
     private var earTagLocked = false
-    /// Live ear-tag gate: the ~1ms blob probe must hold before a still fires.
-    /// No OCR runs on live frames — reading happens on the captured still.
-    private var earTagGate = StableGate(holdToActivate: 0.35, graceWhenLost: 0.9)
+    /// Ear-tag frame grabbing (videoQueue only): the moment a tag blob is
+    /// seen, up to 4 full-res frames are copied over ~half a second, then
+    /// read in the background — the farmer aims for ~1s and can lower the
+    /// phone while OCR runs.
+    private var earShots: [CGImage] = []
+    private var earFirstShotAt: Date?
+    private var earLastShotAt: Date?
+    private var earProcessing = false
+    private let earShotTarget = 4
+    private let earShotSpacing: TimeInterval = 0.12
+    private let earCollectWindow: TimeInterval = 0.9
+    private let earProcessQueue = DispatchQueue(label: "agrivision.eartag.process", qos: .userInitiated)
     /// Mirror of `captureMode` for use on `videoQueue` (avoid reading @Published off-main).
     private var isAutomaticMode = true
     /// When the current qualifying streak began.
@@ -355,6 +367,7 @@ final class CameraModel: NSObject, ObservableObject {
             self.scanMode = mode
             self.detectedTag = nil
             self.detectedTagCrop = nil
+            self.earTagReadFailed = false
             self.cowVisible = false
             self.countdown = nil
             self.croppedMuzzle = nil
@@ -370,7 +383,9 @@ final class CameraModel: NSObject, ObservableObject {
         videoQueue.async { [weak self] in
             self?.isEarTagMode = mode == .earTag
             self?.earTagLocked = false
-            self?.earTagGate.reset()
+            self?.earShots = []
+            self?.earFirstShotAt = nil
+            self?.earLastShotAt = nil
             self?.qualifyingSince = nil
             self?.muzzleSeekSince = nil
             self?.hasAutoCaptured = false
@@ -382,13 +397,15 @@ final class CameraModel: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.detectedTag = nil
             self.detectedTagCrop = nil
+            self.earTagReadFailed = false
             self.cowVisible = false
             self.debugReadout = "camera.tagHint"
         }
         videoQueue.async { [weak self] in
             self?.earTagLocked = false
-            self?.hasAutoCaptured = false
-            self?.earTagGate.reset()
+            self?.earShots = []
+            self?.earFirstShotAt = nil
+            self?.earLastShotAt = nil
         }
     }
 
@@ -464,6 +481,8 @@ final class CameraModel: NSObject, ObservableObject {
     }
 
     func capturePhoto() {
+        // Ear-tag mode grabs video frames instead of stills; no shutter.
+        if scanMode == .earTag { return }
         // Ungated frame collection ignores the cow gate — the shutter always fires.
         if captureMode == .manual && !canManualCapture && !ungatedCapture { return }
         if isContacting { return }
@@ -500,13 +519,6 @@ final class CameraModel: NSObject, ObservableObject {
 
             guard let cgImage = image?.normalizedCGImage() else {
                 self.finishFailure("camera.fail.read", confidence: "")
-                return
-            }
-
-            // Ear-tag mode: the still goes to the tag reader, not the muzzle
-            // pipeline.
-            if self.isEarTagMode {
-                self.processEarTagStill(cgImage)
                 return
             }
 
@@ -858,52 +870,102 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     /// A tag held in frame for a beat fires ONE full-res still — that's where
     /// OCR happens (muzzle-mode lesson: video finds, the still reads).
     private func processEarTagFrame(_ pixelBuffer: CVPixelBuffer) {
-        guard !earTagLocked else { return }
+        guard !earTagLocked, !earProcessing else { return }
         let now = Date()
 
         let blobSeen = earTagReader.hasTagBlob(in: pixelBuffer)
-        let stable = earTagGate.update(hit: blobSeen, now: now)
 
-        if stable {
-            hasAutoCaptured = true
-            DispatchQueue.main.async { [weak self] in
-                self?.capturePhoto()
+        // The FIRST glimpse of a tag starts grabbing frames — no hold gate.
+        // Farmers can't pin a phone to a moving animal; the aim window is
+        // ~half a second, then processing happens with the phone lowered.
+        if blobSeen, earShots.count < earShotTarget,
+           earLastShotAt.map({ now.timeIntervalSince($0) >= earShotSpacing }) ?? true,
+           let shot = earTagReader.snapshot(pixelBuffer) {
+            earShots.append(shot)
+            earLastShotAt = now
+            if earFirstShotAt == nil { earFirstShotAt = now }
+        }
+
+        let collecting = earFirstShotAt != nil
+        if let first = earFirstShotAt,
+           earShots.count >= earShotTarget || now.timeIntervalSince(first) >= earCollectWindow {
+            if earShots.count >= 2 || earShots.count == earShotTarget {
+                beginEarTagProcessing()
+            } else if now.timeIntervalSince(first) >= earCollectWindow {
+                // One stray glimpse — discard silently and keep scanning.
+                earShots = []
+                earFirstShotAt = nil
+                earLastShotAt = nil
             }
         }
 
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scanMode == .earTag else { return }
-            self.cowVisible = blobSeen
-            self.debugReadout = blobSeen ? "camera.tagReady" : "camera.tagHint"
+            self.cowVisible = blobSeen || collecting
+            self.debugReadout = (blobSeen || collecting) ? "camera.tagReady" : "camera.tagHint"
         }
     }
 
-    /// Reads the ear tag off a captured still (called on videoQueue). Success
-    /// locks and shows the result card; failure quietly re-arms so the camera
-    /// just tries another still.
-    private func processEarTagStill(_ cgImage: CGImage) {
-        let read = earTagReader.readTag(in: cgImage)
-        let diag = earTagReader.lastDiagnostic
+    /// Reads the grabbed frames in the background and merges: any TR-full
+    /// read wins; otherwise the majority serial. The farmer is free to lower
+    /// the phone the moment collection ends.
+    private func beginEarTagProcessing() {
+        earProcessing = true
+        let shots = earShots
+        earShots = []
+        earFirstShotAt = nil
+        earLastShotAt = nil
 
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.isProcessing = false
-            guard self.scanMode == .earTag else { return }
+            guard let self, self.scanMode == .earTag else { return }
+            self.isProcessing = true
+            self.debugReadout = "camera.analyzing"
+        }
 
-            if let read {
-                self.detectedTag = read.tag
-                self.detectedTagCrop = read.crop
-                self.debugReadout = read.tag
-                self.videoQueue.async { [weak self] in self?.earTagLocked = true }
-            } else {
-                // Show the stage trail, then re-arm for another still.
-                self.debugReadout = diag.isEmpty ? "camera.tagHint" : diag
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-                    guard let self, self.scanMode == .earTag, self.detectedTag == nil else { return }
+        earProcessQueue.async { [weak self] in
+            guard let self else { return }
+            var reads: [EarTagRead] = []
+            var diag = ""
+            for shot in shots {
+                if let read = self.earTagReader.readTag(in: shot) {
+                    reads.append(read)
+                    if read.tag.hasPrefix("TR") { break }  // best possible — stop early
+                } else {
+                    diag = self.earTagReader.lastDiagnostic
+                }
+            }
+
+            // Merge: TR-full beats serial-only; ties go to the most common
+            // serial across frames.
+            var winner: EarTagRead?
+            if let full = reads.first(where: { $0.tag.hasPrefix("TR") }) {
+                winner = full
+            } else if !reads.isEmpty {
+                var counts: [String: Int] = [:]
+                for read in reads { counts[EarTagReaderService.serialKey(read.tag), default: 0] += 1 }
+                let bestKey = counts.max(by: { $0.value < $1.value })?.key
+                winner = reads.last(where: { EarTagReaderService.serialKey($0.tag) == bestKey })
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isProcessing = false
+                guard self.scanMode == .earTag else {
+                    self.videoQueue.async { [weak self] in self?.earProcessing = false }
+                    return
+                }
+                if let winner {
+                    self.detectedTag = winner.tag
+                    self.detectedTagCrop = winner.crop
+                    self.debugReadout = winner.tag
                     self.videoQueue.async { [weak self] in
-                        self?.hasAutoCaptured = false
-                        self?.earTagGate.reset()
+                        self?.earTagLocked = true
+                        self?.earProcessing = false
                     }
+                } else {
+                    self.earTagReadFailed = true
+                    self.debugReadout = diag.isEmpty ? "camera.tagHint" : diag
+                    self.videoQueue.async { [weak self] in self?.earProcessing = false }
                 }
             }
         }
@@ -1220,6 +1282,11 @@ struct CameraScreen: View {
                 earTagOverlay(tag: tag)
             }
 
+            if collection == nil, enrollAnimalID == nil,
+               model.scanMode == .earTag, model.earTagReadFailed {
+                earTagFailOverlay
+            }
+
             if !recognition.isReady {
                 wakingBanner
             }
@@ -1483,6 +1550,46 @@ struct CameraScreen: View {
             )
             .padding(.horizontal, 28)
 
+            Spacer()
+        }
+        .background(Color.black.opacity(0.35).ignoresSafeArea())
+        .transition(.opacity)
+    }
+
+    /// Shown when a grab-and-read round produced nothing readable.
+    private var earTagFailOverlay: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 14) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 50))
+                    .foregroundStyle(Self.unknownAmber)
+                Text(lang.t("tag.readFail.title"))
+                    .font(AgriFont.bold(22))
+                    .foregroundStyle(AgriColors.purpleDark)
+                Text(lang.t("tag.readFail.msg"))
+                    .font(AgriFont.regular(15))
+                    .foregroundStyle(AgriColors.purpleDark.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                Button {
+                    model.resetEarTag()
+                } label: {
+                    Text(lang.t("camera.scanAgain"))
+                        .font(AgriFont.semibold(17))
+                        .foregroundStyle(AgriColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(AgriColors.purple)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(AgriColors.white)
+            )
+            .padding(.horizontal, 28)
             Spacer()
         }
         .background(Color.black.opacity(0.35).ignoresSafeArea())
