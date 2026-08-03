@@ -94,6 +94,19 @@ final class EarTagExtractionTests: XCTestCase {
         )
     }
 
+    func testTagYellowClassifier() {
+        // Bright saturated tag plastic.
+        XCTAssertTrue(EarTagReaderService.isTagYellow(r: 0.95, g: 0.85, b: 0.15))
+        XCTAssertTrue(EarTagReaderService.isTagYellow(r: 0.80, g: 0.70, b: 0.20))
+        // Straw/hay: yellowish hue but dull and desaturated.
+        XCTAssertFalse(EarTagReaderService.isTagYellow(r: 0.65, g: 0.60, b: 0.45))
+        // Not yellow at all.
+        XCTAssertFalse(EarTagReaderService.isTagYellow(r: 0.9, g: 0.9, b: 0.9))  // white
+        XCTAssertFalse(EarTagReaderService.isTagYellow(r: 0.2, g: 0.7, b: 0.25)) // green
+        XCTAssertFalse(EarTagReaderService.isTagYellow(r: 0.8, g: 0.2, b: 0.15)) // red
+        XCTAssertFalse(EarTagReaderService.isTagYellow(r: 0.1, g: 0.1, b: 0.1))  // dark
+    }
+
     func testMatchesExactAndSerialSuffix() {
         XCTAssertTrue(EarTagReaderService.matches(stored: "TR-20 1755219", read: "TR201755219"))
         // Serial-only read matches the stored full tag by suffix.
