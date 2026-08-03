@@ -27,7 +27,8 @@ final class EarTagReaderService {
     /// a tag too small to read should prompt "get closer", not burn a doomed
     /// read round. NO OCR runs on live frames.
     func tagBlobPixels(in pixelBuffer: CVPixelBuffer) -> Int {
-        yellowBlobRegion(in: CIImage(cvPixelBuffer: pixelBuffer))?.count ?? 0
+        let ci = CIImage(cvPixelBuffer: pixelBuffer)
+        return (yellowBlobRegion(in: ci) ?? yellowBlobRegion(in: ci, relaxed: true))?.count ?? 0
     }
 
     /// Copies a camera frame out of the capture pool so it can be processed
@@ -59,7 +60,7 @@ final class EarTagReaderService {
         var fallback: EarTagRead?
         lastDiagnostic = ""
 
-        if let blob = yellowBlobRegion(in: image) {
+        if let blob = yellowBlobRegion(in: image) ?? yellowBlobRegion(in: image, relaxed: true) {
             lastDiagnostic = "b\(Int(blob.angle * 180 / .pi))°"
             if let read = zoomRead(image, normalizedRect: blob.rect, levelBy: blob.angle) {
                 // Fast path: return even a serial-only read immediately — the
@@ -183,18 +184,25 @@ final class EarTagReaderService {
             .joined(separator: " ")
     }
 
-    /// Union of the boxes of digit-bearing observations, generously padded so
-    /// the crop keeps the "TR xx" header that sits above the serial. Normalized
-    /// Vision coordinates (bottom-left origin); nil when no digits were seen.
+    /// Box of the single observation carrying the longest contiguous digit
+    /// run — a union of everything digit-ish can lasso half the scene into
+    /// the crop. Padded extra vertically so the "TR xx" header above the
+    /// serial stays in frame. Normalized Vision coordinates; nil when no
+    /// observation has a 3+ digit run.
     private static func digitRegion(of observations: [VNRecognizedTextObservation]) -> CGRect? {
-        let digitBoxes = observations
-            .filter { ($0.topCandidates(1).first?.string ?? "").filter(\.isNumber).count >= 2 }
-            .map(\.boundingBox)
-        guard var union = digitBoxes.first else { return nil }
-        for box in digitBoxes.dropFirst() {
-            union = union.union(box)
+        func longestRun(_ obs: VNRecognizedTextObservation) -> Int {
+            let text = obs.topCandidates(1).first?.string ?? ""
+            var best = 0, current = 0
+            for ch in text {
+                current = ch.isNumber ? current + 1 : 0
+                best = max(best, current)
+            }
+            return best
         }
-        let padded = union.insetBy(dx: -(union.width * 0.6 + 0.02), dy: -(union.height * 0.6 + 0.02))
+        guard let best = observations.max(by: { longestRun($0) < longestRun($1) }),
+              longestRun(best) >= 3 else { return nil }
+        let box = best.boundingBox
+        let padded = box.insetBy(dx: -(box.width * 0.6 + 0.02), dy: -(box.height * 1.2 + 0.02))
         return padded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
     }
 
@@ -225,7 +233,7 @@ final class EarTagReaderService {
     /// plus the blob's principal-axis tilt (radians, image coordinates), used
     /// to rotate the crop level before OCR. Runs on a ~160px-wide downscale,
     /// so the scan plus flood fill costs ~a millisecond.
-    private func yellowBlobRegion(in source: CIImage) -> (rect: CGRect, angle: CGFloat, count: Int)? {
+    private func yellowBlobRegion(in source: CIImage, relaxed: Bool = false) -> (rect: CGRect, angle: CGFloat, count: Int)? {
         guard source.extent.width > 0 else { return nil }
         let scale = 160 / source.extent.width
         let small = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
@@ -242,11 +250,11 @@ final class EarTagReaderService {
 
         var mask = [Bool](repeating: false, count: w * h)
         for i in 0..<(w * h) {
-            mask[i] = Self.isTagYellow(
-                r: Double(pixels[i * 4]) / 255,
-                g: Double(pixels[i * 4 + 1]) / 255,
-                b: Double(pixels[i * 4 + 2]) / 255
-            )
+            let r = Double(pixels[i * 4]) / 255
+            let g = Double(pixels[i * 4 + 1]) / 255
+            let b = Double(pixels[i * 4 + 2]) / 255
+            mask[i] = relaxed ? Self.isTagYellowRelaxed(r: r, g: g, b: b)
+                              : Self.isTagYellow(r: r, g: g, b: b)
         }
 
         // Largest 4-connected component via flood fill.
@@ -311,6 +319,27 @@ final class EarTagReaderService {
         let padded = rect.insetBy(dx: -(rect.width * 0.35 + 0.01), dy: -(rect.height * 0.35 + 0.01))
         let clamped = padded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
         return (clamped, angle, blob.count)
+    }
+
+    /// Second-tier classifier for sun-bleached / dirty tags whose plastic has
+    /// faded toward olive: wider hue band, much lower saturation/brightness
+    /// floors. Only consulted when the strict tier finds nothing, so straw
+    /// false-positives are confined to scenes with no proper tag — and a
+    /// false blob merely wastes one read round.
+    static func isTagYellowRelaxed(r: Double, g: Double, b: Double) -> Bool {
+        let maxC = max(r, g, b), minC = min(r, g, b)
+        let delta = maxC - minC
+        guard maxC > 0.22, delta > 0, delta / maxC > 0.22 else { return false }
+        var hue: Double
+        if maxC == r {
+            hue = 60 * ((g - b) / delta)
+        } else if maxC == g {
+            hue = 60 * (2 + (b - r) / delta)
+        } else {
+            hue = 60 * (4 + (r - g) / delta)
+        }
+        if hue < 0 { hue += 360 }
+        return (30...85).contains(hue)
     }
 
     /// Saturated tag-plastic yellow: hue in the yellow band with real

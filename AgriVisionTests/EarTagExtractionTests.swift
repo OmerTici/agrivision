@@ -101,6 +101,16 @@ final class EarTagExtractionTests: XCTestCase {
         )
     }
 
+    func testRelaxedClassifierCatchesFadedTags() {
+        // Sun-bleached olive tag plastic (field case TR 43): fails strict...
+        XCTAssertFalse(EarTagReaderService.isTagYellow(r: 0.45, g: 0.40, b: 0.28))
+        // ...but passes the relaxed tier.
+        XCTAssertTrue(EarTagReaderService.isTagYellowRelaxed(r: 0.45, g: 0.40, b: 0.28))
+        // Gray/white/dark still rejected even relaxed.
+        XCTAssertFalse(EarTagReaderService.isTagYellowRelaxed(r: 0.6, g: 0.6, b: 0.58))
+        XCTAssertFalse(EarTagReaderService.isTagYellowRelaxed(r: 0.12, g: 0.11, b: 0.10))
+    }
+
     func testTagYellowClassifier() {
         // Bright saturated tag plastic.
         XCTAssertTrue(EarTagReaderService.isTagYellow(r: 0.95, g: 0.85, b: 0.15))
