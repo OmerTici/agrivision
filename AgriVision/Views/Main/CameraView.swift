@@ -144,6 +144,9 @@ final class CameraModel: NSObject, ObservableObject {
     /// Ear-tag OCR result, set once the same tag is read on consecutive passes
     /// (single misreads never lock). nil while still scanning.
     @Published var detectedTag: String?
+    /// The image region the locked tag was read from — shown on the result
+    /// card so the farmer can verify the digits by eye.
+    @Published var detectedTagCrop: UIImage?
 
     @Published var status: Status = .idle
     @Published var captureMode: CaptureMode = .automatic
@@ -224,6 +227,8 @@ final class CameraModel: NSObject, ObservableObject {
     /// The most complete textual form seen per serial key (TR-prefixed beats
     /// bare serial) — what actually gets displayed on lock.
     private var tagBestForm: [String: String] = [:]
+    /// Latest crop image per serial key (later crops come from better framing).
+    private var tagCrops: [String: UIImage] = [:]
     /// The farmer's herd tags — reads that match one lock sooner (videoQueue only).
     private var knownTags: [String] = []
     /// Mirror of `captureMode` for use on `videoQueue` (avoid reading @Published off-main).
@@ -362,6 +367,7 @@ final class CameraModel: NSObject, ObservableObject {
             guard self.scanMode != mode else { return }
             self.scanMode = mode
             self.detectedTag = nil
+            self.detectedTagCrop = nil
             self.cowVisible = false
             self.countdown = nil
             self.croppedMuzzle = nil
@@ -379,6 +385,7 @@ final class CameraModel: NSObject, ObservableObject {
             self?.earTagLocked = false
             self?.tagVotes = [:]
             self?.tagBestForm = [:]
+            self?.tagCrops = [:]
             self?.qualifyingSince = nil
             self?.muzzleSeekSince = nil
             self?.hasAutoCaptured = false
@@ -389,6 +396,7 @@ final class CameraModel: NSObject, ObservableObject {
     func resetEarTag() {
         DispatchQueue.main.async {
             self.detectedTag = nil
+            self.detectedTagCrop = nil
             self.cowVisible = false
             self.debugReadout = "camera.tagHint"
         }
@@ -396,6 +404,7 @@ final class CameraModel: NSObject, ObservableObject {
             self?.earTagLocked = false
             self?.tagVotes = [:]
             self?.tagBestForm = [:]
+            self?.tagCrops = [:]
         }
     }
 
@@ -867,7 +876,7 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         if let last = lastOCRAt, now.timeIntervalSince(last) < ocrInterval { return }
         lastOCRAt = now
 
-        guard let tag = earTagReader.readTag(in: pixelBuffer, orientation: .up) else {
+        guard let read = earTagReader.readTag(in: pixelBuffer, orientation: .up) else {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.scanMode == .earTag else { return }
                 self.cowVisible = false
@@ -876,10 +885,14 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
+        let tag = read.tag
         let key = EarTagReaderService.serialKey(tag)
         tagVotes[key, default: 0] += 1
         if tag.count > (tagBestForm[key]?.count ?? 0) {
             tagBestForm[key] = tag
+        }
+        if let crop = read.crop {
+            tagCrops[key] = crop
         }
         let display = tagBestForm[key] ?? tag
 
@@ -889,12 +902,16 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         let needed = matchesHerd ? 2 : 3
         let locked = votes >= needed && votes > rivalBest
         if locked { earTagLocked = true }
+        let lockedCrop = locked ? tagCrops[key] : nil
 
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scanMode == .earTag else { return }
             self.cowVisible = true
             self.debugReadout = display
-            if locked { self.detectedTag = display }
+            if locked {
+                self.detectedTag = display
+                self.detectedTagCrop = lockedCrop
+            }
         }
     }
 
@@ -1426,6 +1443,16 @@ struct CameraScreen: View {
                     .font(AgriFont.bold(22))
                     .foregroundStyle(AgriColors.purpleDark)
                     .multilineTextAlignment(.center)
+
+                // The image the number was read from — lets the farmer verify
+                // the digits against the physical tag at a glance.
+                if let crop = model.detectedTagCrop {
+                    Image(uiImage: crop)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
 
                 // A herd match shows the stored tag (full, farmer-entered form)
                 // rather than the possibly header-less OCR read.

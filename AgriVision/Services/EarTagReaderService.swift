@@ -1,5 +1,13 @@
 import CoreImage
+import UIKit
 import Vision
+
+/// One successful tag read: the number plus the image region it was read from,
+/// shown on the result card so the farmer can verify the digits by eye.
+struct EarTagRead {
+    let tag: String
+    let crop: UIImage?
+}
 
 /// Reads cattle ear-tag numbers off live camera frames with on-device OCR
 /// (Vision's text recognizer — offline, no model to bundle). Turkish tags are
@@ -13,17 +21,20 @@ final class EarTagReaderService {
     /// full-frame read sees digits but no clean tag (small/angled tag in a
     /// head-filling frame), the digit region is cropped, enlarged, and re-read —
     /// a software zoom that rescues most marginal tags without any extra model.
-    func readTag(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation = .up) -> String? {
+    func readTag(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation = .up) -> EarTagRead? {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
         let observations = Self.recognize(with: handler, minimumTextHeight: 0.02)
         if let tag = Self.extractTag(from: Self.joinedText(of: observations)) {
-            return tag
+            // Cut a display crop around the text that produced the read.
+            let crop = Self.digitRegion(of: observations)
+                .flatMap { enlargedCrop(from: pixelBuffer, normalizedRect: $0) }
+            return EarTagRead(tag: tag, crop: crop.map { UIImage(cgImage: $0) })
         }
 
         // Second pass: OCR saw digits but no clean tag — zoom into them.
         if let region = Self.digitRegion(of: observations),
-           let tag = zoomRead(pixelBuffer, normalizedRect: region) {
-            return tag
+           let read = zoomRead(pixelBuffer, normalizedRect: region) {
+            return read
         }
 
         // Third pass: OCR saw no usable text at all. Find the tag by what it
@@ -37,11 +48,12 @@ final class EarTagReaderService {
     }
 
     /// Crops the region, enlarges it, and runs a second OCR over it.
-    private func zoomRead(_ pixelBuffer: CVPixelBuffer, normalizedRect: CGRect) -> String? {
+    private func zoomRead(_ pixelBuffer: CVPixelBuffer, normalizedRect: CGRect) -> EarTagRead? {
         guard let crop = enlargedCrop(from: pixelBuffer, normalizedRect: normalizedRect) else { return nil }
         let handler = VNImageRequestHandler(cgImage: crop, orientation: .up, options: [:])
         let zoomed = Self.recognize(with: handler, minimumTextHeight: 0)
-        return Self.extractTag(from: Self.joinedText(of: zoomed))
+        guard let tag = Self.extractTag(from: Self.joinedText(of: zoomed)) else { return nil }
+        return EarTagRead(tag: tag, crop: UIImage(cgImage: crop))
     }
 
     private static func recognize(
