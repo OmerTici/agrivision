@@ -31,29 +31,59 @@ final class EarTagReaderService {
             return EarTagRead(tag: tag, crop: crop.map { UIImage(cgImage: $0) })
         }
 
-        // Second pass: OCR saw digits but no clean tag — zoom into them.
+        // Second pass: find the tag by what it IS — saturated yellow plastic —
+        // and zoom into it, ROTATED LEVEL first. Tag print often runs
+        // diagonally (ear angle); the blob's principal axis tells us the tilt,
+        // and straightening the crop is what lets OCR catch the small "TR xx"
+        // header, not just the fat serial. A false blob (straw, bucket) wastes
+        // one OCR pass; the format filter and voting keep junk from locking.
+        if let blob = yellowBlobRegion(in: pixelBuffer) {
+            if let read = zoomRead(pixelBuffer, normalizedRect: blob.rect, levelBy: blob.angle) {
+                return read
+            }
+        }
+
+        // Third pass: no blob (odd lighting) but OCR saw some digits — zoom
+        // into the digit region unrotated.
         if let region = Self.digitRegion(of: observations),
            let read = zoomRead(pixelBuffer, normalizedRect: region) {
             return read
         }
+        return nil
+    }
 
-        // Third pass: OCR saw no usable text at all. Find the tag by what it
-        // IS — saturated yellow plastic — and zoom into that. Classical CV on
-        // a downscaled frame, no model. A false blob (straw, bucket) wastes
-        // one OCR pass; the format filter and voting keep junk from locking.
-        if let blob = yellowBlobRegion(in: pixelBuffer) {
-            return zoomRead(pixelBuffer, normalizedRect: blob)
+    /// Crops the region, enlarges it, optionally rotates it level, and runs a
+    /// second OCR over it. When a rotation is applied and yields nothing, the
+    /// flipped orientation (±180°) is tried too — the principal axis can't
+    /// tell up from down.
+    private func zoomRead(_ pixelBuffer: CVPixelBuffer, normalizedRect: CGRect, levelBy angle: CGFloat = 0) -> EarTagRead? {
+        guard let baseCrop = enlargedCrop(from: pixelBuffer, normalizedRect: normalizedRect) else { return nil }
+
+        var attempts: [CGFloat] = [0]
+        if abs(angle) > .pi / 15 {
+            attempts = [-angle, -angle + .pi, 0]
+        }
+        for rotation in attempts {
+            guard let crop = rotated(baseCrop, by: rotation) else { continue }
+            let handler = VNImageRequestHandler(cgImage: crop, orientation: .up, options: [:])
+            let zoomed = Self.recognize(with: handler, minimumTextHeight: 0)
+            if let tag = Self.extractTag(from: Self.joinedText(of: zoomed)) {
+                return EarTagRead(tag: tag, crop: UIImage(cgImage: crop))
+            }
         }
         return nil
     }
 
-    /// Crops the region, enlarges it, and runs a second OCR over it.
-    private func zoomRead(_ pixelBuffer: CVPixelBuffer, normalizedRect: CGRect) -> EarTagRead? {
-        guard let crop = enlargedCrop(from: pixelBuffer, normalizedRect: normalizedRect) else { return nil }
-        let handler = VNImageRequestHandler(cgImage: crop, orientation: .up, options: [:])
-        let zoomed = Self.recognize(with: handler, minimumTextHeight: 0)
-        guard let tag = Self.extractTag(from: Self.joinedText(of: zoomed)) else { return nil }
-        return EarTagRead(tag: tag, crop: UIImage(cgImage: crop))
+    /// Rotates an image around its center (0 = passthrough).
+    private func rotated(_ image: CGImage, by angle: CGFloat) -> CGImage? {
+        guard angle != 0 else { return image }
+        let ci = CIImage(cgImage: image)
+        let center = CGPoint(x: ci.extent.midX, y: ci.extent.midY)
+        let transform = CGAffineTransform(translationX: center.x, y: center.y)
+            .rotated(by: angle)
+            .translatedBy(x: -center.x, y: -center.y)
+        let rotatedCI = ci.transformed(by: transform)
+        return ciContext.createCGImage(rotatedCI, from: rotatedCI.extent)
     }
 
     private static func recognize(
@@ -125,10 +155,11 @@ final class EarTagReaderService {
     }
 
     /// Finds the largest saturated-yellow blob — ear-tag plastic — and returns
-    /// its padded region in normalized Vision coordinates (bottom-left origin).
-    /// Runs on a ~160px-wide downscale, so the scan plus flood fill costs
-    /// ~a millisecond. nil when nothing tag-like is in frame.
-    private func yellowBlobRegion(in pixelBuffer: CVPixelBuffer) -> CGRect? {
+    /// its padded region in normalized Vision coordinates (bottom-left origin)
+    /// plus the blob's principal-axis tilt (radians, image coordinates), used
+    /// to rotate the crop level before OCR. Runs on a ~160px-wide downscale,
+    /// so the scan plus flood fill costs ~a millisecond.
+    private func yellowBlobRegion(in pixelBuffer: CVPixelBuffer) -> (rect: CGRect, angle: CGFloat)? {
         let source = CIImage(cvPixelBuffer: pixelBuffer)
         guard source.extent.width > 0 else { return nil }
         let scale = 160 / source.extent.width
@@ -186,6 +217,25 @@ final class EarTagReaderService {
         let aspect = Double(bw) / Double(bh)
         guard (0.25...4.0).contains(aspect) else { return nil }
 
+        // Principal-axis tilt from the blob's second moments — the tag's long
+        // axis, which the printed number runs along. Bitmap y is top-down;
+        // negate the cross term to get the angle in (bottom-up) image coords.
+        var n = 0.0, sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0
+        for y in blob.minY...blob.maxY {
+            for x in blob.minX...blob.maxX where mask[y * w + x] {
+                let fx = Double(x), fy = Double(y)
+                n += 1; sx += fx; sy += fy
+                sxx += fx * fx; syy += fy * fy; sxy += fx * fy
+            }
+        }
+        var angle: CGFloat = 0
+        if n > 0 {
+            let covXX = sxx / n - (sx / n) * (sx / n)
+            let covYY = syy / n - (sy / n) * (sy / n)
+            let covXY = -(sxy / n - (sx / n) * (sy / n))
+            angle = CGFloat(0.5 * atan2(2 * covXY, covXX - covYY))
+        }
+
         // Bitmap rows are top-down; Vision's normalized origin is bottom-left.
         let rect = CGRect(
             x: Double(blob.minX) / Double(w),
@@ -194,7 +244,8 @@ final class EarTagReaderService {
             height: Double(bh) / Double(h)
         )
         let padded = rect.insetBy(dx: -(rect.width * 0.35 + 0.01), dy: -(rect.height * 0.35 + 0.01))
-        return padded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let clamped = padded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (clamped, angle)
     }
 
     /// Saturated tag-plastic yellow: hue in the yellow band with real

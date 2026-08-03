@@ -1125,6 +1125,8 @@ struct CameraScreen: View {
     @State private var showResult = false
     /// Zoom factor at the start of the current pinch; the gesture scales from here.
     @State private var zoomAnchor: CGFloat = 1.0
+    /// Shows the scan-method action sheet (Default / Ear Tag).
+    @State private var showModeChooser = false
 
     /// Yellow-orange used for the "unrecognized animal" prompt.
     private static let unknownAmber = Color(red: 0.95, green: 0.62, blue: 0.18)
@@ -1337,31 +1339,39 @@ struct CameraScreen: View {
 
                 Spacer()
 
-                // Camera-method menu (identify tab only): Default = muzzle
-                // matching, or ear-tag OCR.
+                // Camera-method switch (identify tab only): shows the CURRENT
+                // mode so the state is always visible, opens a native action
+                // sheet with big tappable rows on tap.
                 if collection == nil, enrollAnimalID == nil {
-                    Menu {
+                    Button {
+                        showModeChooser = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "camera.badge.ellipsis")
+                                .font(.system(size: 15, weight: .bold))
+                            Text(lang.t(model.scanMode.key))
+                                .font(AgriFont.semibold(14))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(AgriColors.white)
+                        .padding(.vertical, 11)
+                        .padding(.horizontal, 14)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Capsule())
+                        .contentShape(Capsule().inset(by: -8))
+                    }
+                    .buttonStyle(.plain)
+                    .confirmationDialog(
+                        lang.t("camera.scanMode.title"),
+                        isPresented: $showModeChooser,
+                        titleVisibility: .visible
+                    ) {
                         ForEach(CameraModel.ScanMode.allCases, id: \.self) { mode in
-                            Button {
+                            Button(lang.t(mode.key)) {
                                 model.setScanMode(mode)
-                            } label: {
-                                if model.scanMode == mode {
-                                    Label(lang.t(mode.key), systemImage: "checkmark")
-                                } else {
-                                    Text(lang.t(mode.key))
-                                }
                             }
                         }
-                    } label: {
-                        Image(systemName: "camera.badge.ellipsis")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(AgriColors.white)
-                            .frame(width: 44, height: 44)
-                            .background(Color.black.opacity(0.45))
-                            .clipShape(Circle())
-                            // Whole circle (plus a little slop) is tappable —
-                            // not just the glyph's drawn pixels.
-                            .contentShape(Circle().inset(by: -8))
                     }
                     .padding(.trailing, 10)
                 }
@@ -1422,9 +1432,10 @@ struct CameraScreen: View {
         store.animals.first { EarTagReaderService.matches(stored: $0.tag, read: tag) }
     }
 
-    /// "TR12345678" → "TR 12345678" for display.
+    /// Tag numbers display as one unbroken token ("TR201755219") — matching
+    /// how farmers write them, with no gap OCR artifacts could hide in.
     private func displayTag(_ tag: String) -> String {
-        tag.hasPrefix("TR") ? "TR " + tag.dropFirst(2) : tag
+        tag.replacingOccurrences(of: " ", with: "")
     }
 
     /// Result card for a locked ear-tag read: the matched animal, or a
