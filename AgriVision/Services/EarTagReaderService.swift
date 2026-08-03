@@ -22,11 +22,12 @@ final class EarTagReaderService {
     /// failures pinpoint the failing stage from a screenshot.
     private(set) var lastDiagnostic = ""
 
-    /// Cheap live-preview probe (~1ms): is a plausible ear-tag blob in frame?
-    /// Drives the green brackets and the frame-grab trigger — NO OCR runs on
-    /// live frames; reading happens afterwards on grabbed frames.
-    func hasTagBlob(in pixelBuffer: CVPixelBuffer) -> Bool {
-        yellowBlobRegion(in: CIImage(cvPixelBuffer: pixelBuffer)) != nil
+    /// Cheap live-preview probe (~1ms): size (in downscale pixels) of the
+    /// ear-tag blob in frame, 0 when none. Size gates the frame-grab trigger —
+    /// a tag too small to read should prompt "get closer", not burn a doomed
+    /// read round. NO OCR runs on live frames.
+    func tagBlobPixels(in pixelBuffer: CVPixelBuffer) -> Int {
+        yellowBlobRegion(in: CIImage(cvPixelBuffer: pixelBuffer))?.count ?? 0
     }
 
     /// Copies a camera frame out of the capture pool so it can be processed
@@ -36,10 +37,11 @@ final class EarTagReaderService {
         return ciContext.createCGImage(ci, from: ci.extent)
     }
 
-    /// Reads a captured still. Stills are ~6x the pixels of a video frame with
-    /// proper autofocus, so this is where OCR actually happens.
-    func readTag(in cgImage: CGImage) -> EarTagRead? {
-        readTag(ci: CIImage(cgImage: cgImage))
+    /// Reads a grabbed frame. `thorough` keeps hunting the small "TR xx"
+    /// header after a serial-only read (extra bounded passes, ~0.5s) — used
+    /// as a follow-up on the best frame, never in the fast loop.
+    func readTag(in cgImage: CGImage, thorough: Bool = false) -> EarTagRead? {
+        readTag(ci: CIImage(cgImage: cgImage), thorough: thorough)
     }
 
     /// Runs OCR and returns the first text matching the ear-tag pattern,
@@ -47,7 +49,7 @@ final class EarTagReaderService {
     /// then a crop-enlarge-rotate re-read of the yellow blob, then of the
     /// digit region — a software zoom that rescues small/angled tags without
     /// any extra model.
-    private func readTag(ci image: CIImage) -> EarTagRead? {
+    private func readTag(ci image: CIImage, thorough: Bool) -> EarTagRead? {
         // CROP FIRST: the still was only captured because a tag blob was
         // visible, so find the yellow plastic, cut it out, and OCR the
         // enlarged crop (leveled, with flip retry). Focused, fast, and free
@@ -59,12 +61,11 @@ final class EarTagReaderService {
 
         if let blob = yellowBlobRegion(in: image) {
             lastDiagnostic = "b\(Int(blob.angle * 180 / .pi))°"
-            // Any successful crop read returns immediately — even serial-only.
-            // Hunting the missing "TR" header cost a full-image OCR pass over
-            // a 12MP still (seconds of "analyzing" hang); a partial-but-right
-            // number now beats a complete one later.
             if let read = zoomRead(image, normalizedRect: blob.rect, levelBy: blob.angle) {
-                return read
+                // Fast path: return even a serial-only read immediately — the
+                // caller decides whether to spend a thorough follow-up on it.
+                if read.tag.hasPrefix("TR") || !thorough { return read }
+                fallback = read
             }
         } else {
             lastDiagnostic = "b:none"
@@ -224,7 +225,7 @@ final class EarTagReaderService {
     /// plus the blob's principal-axis tilt (radians, image coordinates), used
     /// to rotate the crop level before OCR. Runs on a ~160px-wide downscale,
     /// so the scan plus flood fill costs ~a millisecond.
-    private func yellowBlobRegion(in source: CIImage) -> (rect: CGRect, angle: CGFloat)? {
+    private func yellowBlobRegion(in source: CIImage) -> (rect: CGRect, angle: CGFloat, count: Int)? {
         guard source.extent.width > 0 else { return nil }
         let scale = 160 / source.extent.width
         let small = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
@@ -309,7 +310,7 @@ final class EarTagReaderService {
         )
         let padded = rect.insetBy(dx: -(rect.width * 0.35 + 0.01), dy: -(rect.height * 0.35 + 0.01))
         let clamped = padded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-        return (clamped, angle)
+        return (clamped, angle, blob.count)
     }
 
     /// Saturated tag-plastic yellow: hue in the yellow band with real
