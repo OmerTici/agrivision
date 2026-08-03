@@ -52,35 +52,46 @@ final class EarTagReaderService {
 
         if let blob = yellowBlobRegion(in: image) {
             lastDiagnostic = "b\(Int(blob.angle * 180 / .pi))°"
+            // Any successful crop read returns immediately — even serial-only.
+            // Hunting the missing "TR" header cost a full-image OCR pass over
+            // a 12MP still (seconds of "analyzing" hang); a partial-but-right
+            // number now beats a complete one later.
             if let read = zoomRead(image, normalizedRect: blob.rect, levelBy: blob.angle) {
-                if read.tag.hasPrefix("TR") { return read }
-                fallback = read
+                return read
             }
         } else {
             lastDiagnostic = "b:none"
         }
 
-        // Fallback pass: whole-image OCR — catches a tag the color detector
-        // missed (faded/bleached plastic) or completes a serial-only read.
-        let handler = VNImageRequestHandler(ciImage: image, options: [:])
+        // Fallback (only when the blob path found nothing): whole-image OCR
+        // on a bounded downscale — catches faded/bleached tags the color
+        // detector misses. NEVER run on the raw still; 12MP accurate OCR is
+        // a multi-second stall.
+        let bounded = Self.downscaled(image, maxDimension: 1600)
+        let handler = VNImageRequestHandler(ciImage: bounded, options: [:])
         let observations = Self.recognize(with: handler, minimumTextHeight: 0.02)
         let pass1Text = Self.joinedText(of: observations)
         lastDiagnostic += " p1'\(pass1Text.suffix(10))'"
         if let tag = Self.extractTag(from: pass1Text) {
             let crop = Self.digitRegion(of: observations)
                 .flatMap { enlargedCrop(from: image, normalizedRect: $0) }
-            let read = EarTagRead(tag: tag, crop: crop.map { UIImage(cgImage: $0) } ?? fallback?.crop)
-            if tag.hasPrefix("TR") { return read }
-            if fallback == nil { fallback = read }
+            return EarTagRead(tag: tag, crop: crop.map { UIImage(cgImage: $0) })
         }
 
         // Last resort: zoom into wherever the whole-image pass saw digits.
-        if fallback == nil,
-           let region = Self.digitRegion(of: observations),
+        if let region = Self.digitRegion(of: observations),
            let read = zoomRead(image, normalizedRect: region) {
             fallback = read
         }
         return fallback
+    }
+
+    /// Uniformly scales an image down so its longer side is at most `maxDimension`.
+    private static func downscaled(_ image: CIImage, maxDimension: CGFloat) -> CIImage {
+        let longest = max(image.extent.width, image.extent.height)
+        guard longest > maxDimension else { return image }
+        let s = maxDimension / longest
+        return image.transformed(by: CGAffineTransform(scaleX: s, y: s))
     }
 
     /// Crops the region, enlarges it, optionally rotates it level, and runs a
@@ -191,8 +202,11 @@ final class EarTagReaderService {
         guard rect.width > 8, rect.height > 8 else { return nil }
 
         var cropped = image.cropped(to: rect)
-        let scale = min(4, max(1, 800 / max(rect.width, rect.height)))
-        if scale > 1 {
+        // Normalize the crop toward ~1000px: upscale distant tags (max 4x) so
+        // OCR sees big text, and DOWNSCALE oversized crops from 12MP stills —
+        // accurate OCR cost grows fast with input size.
+        let scale = min(4, 1000 / max(rect.width, rect.height))
+        if abs(scale - 1) > 0.01 {
             cropped = cropped.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         }
         return ciContext.createCGImage(cropped, from: cropped.extent)
