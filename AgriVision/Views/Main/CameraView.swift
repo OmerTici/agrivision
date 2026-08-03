@@ -1327,9 +1327,12 @@ struct CameraScreen: View {
                         Image(systemName: "camera.badge.ellipsis")
                             .font(.system(size: 17, weight: .bold))
                             .foregroundStyle(AgriColors.white)
-                            .frame(width: 40, height: 40)
+                            .frame(width: 44, height: 44)
                             .background(Color.black.opacity(0.45))
                             .clipShape(Circle())
+                            // Whole circle (plus a little slop) is tappable —
+                            // not just the glyph's drawn pixels.
+                            .contentShape(Circle().inset(by: -8))
                     }
                     .padding(.trailing, 10)
                 }
