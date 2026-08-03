@@ -22,12 +22,25 @@ final class EarTagReaderService {
     /// failures pinpoint the failing stage from a screenshot.
     private(set) var lastDiagnostic = ""
 
-    /// Runs OCR on a live camera frame and returns the first text matching the
-    /// ear-tag pattern, normalized (e.g. "TR201755219"). Two passes: if the
-    /// full-frame read sees digits but no clean tag (small/angled tag in a
-    /// head-filling frame), the digit region is cropped, enlarged, and re-read —
-    /// a software zoom that rescues most marginal tags without any extra model.
-    func readTag(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation = .up) -> EarTagRead? {
+    /// Cheap live-preview probe (~1ms): is a plausible ear-tag blob in frame?
+    /// Drives the green brackets and the auto-capture gate — NO OCR runs on
+    /// live frames; reading happens on a captured full-res still.
+    func hasTagBlob(in pixelBuffer: CVPixelBuffer) -> Bool {
+        yellowBlobRegion(in: CIImage(cvPixelBuffer: pixelBuffer)) != nil
+    }
+
+    /// Reads a captured still. Stills are ~6x the pixels of a video frame with
+    /// proper autofocus, so this is where OCR actually happens.
+    func readTag(in cgImage: CGImage) -> EarTagRead? {
+        readTag(ci: CIImage(cgImage: cgImage))
+    }
+
+    /// Runs OCR and returns the first text matching the ear-tag pattern,
+    /// normalized (e.g. "TR201755219"). Escalating passes: full-image OCR,
+    /// then a crop-enlarge-rotate re-read of the yellow blob, then of the
+    /// digit region — a software zoom that rescues small/angled tags without
+    /// any extra model.
+    private func readTag(ci image: CIImage) -> EarTagRead? {
         // A serial-only read (no TR header) never ends the search early — it's
         // kept as the fallback while the leveled zoom passes try to recover
         // the full number. The header prints small and tilted, so the quick
@@ -36,14 +49,14 @@ final class EarTagReaderService {
         var fallback: EarTagRead?
         lastDiagnostic = ""
 
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+        let handler = VNImageRequestHandler(ciImage: image, options: [:])
         let observations = Self.recognize(with: handler, minimumTextHeight: 0.02)
         let pass1Text = Self.joinedText(of: observations)
         lastDiagnostic = "p1'\(pass1Text.suffix(10))'"
         if let tag = Self.extractTag(from: pass1Text) {
             // Cut a display crop around the text that produced the read.
             let crop = Self.digitRegion(of: observations)
-                .flatMap { enlargedCrop(from: pixelBuffer, normalizedRect: $0) }
+                .flatMap { enlargedCrop(from: image, normalizedRect: $0) }
             let read = EarTagRead(tag: tag, crop: crop.map { UIImage(cgImage: $0) })
             if tag.hasPrefix("TR") { return read }
             fallback = read
@@ -55,9 +68,9 @@ final class EarTagReaderService {
         // and straightening the crop is what lets OCR catch the small "TR xx"
         // header, not just the fat serial. A false blob (straw, bucket) wastes
         // one OCR pass; the format filter and voting keep junk from locking.
-        if let blob = yellowBlobRegion(in: pixelBuffer) {
+        if let blob = yellowBlobRegion(in: image) {
             lastDiagnostic += " b\(Int(blob.angle * 180 / .pi))°"
-            if let read = zoomRead(pixelBuffer, normalizedRect: blob.rect, levelBy: blob.angle) {
+            if let read = zoomRead(image, normalizedRect: blob.rect, levelBy: blob.angle) {
                 if read.tag.hasPrefix("TR") { return read }
                 if fallback == nil { fallback = read }
             }
@@ -69,7 +82,7 @@ final class EarTagReaderService {
         // into the digit region unrotated.
         if fallback == nil,
            let region = Self.digitRegion(of: observations),
-           let read = zoomRead(pixelBuffer, normalizedRect: region) {
+           let read = zoomRead(image, normalizedRect: region) {
             fallback = read
         }
         return fallback
@@ -79,8 +92,8 @@ final class EarTagReaderService {
     /// second OCR over it. When a rotation is applied and yields nothing, the
     /// flipped orientation (±180°) is tried too — the principal axis can't
     /// tell up from down.
-    private func zoomRead(_ pixelBuffer: CVPixelBuffer, normalizedRect: CGRect, levelBy angle: CGFloat = 0) -> EarTagRead? {
-        guard let baseCrop = enlargedCrop(from: pixelBuffer, normalizedRect: normalizedRect) else { return nil }
+    private func zoomRead(_ image: CIImage, normalizedRect: CGRect, levelBy angle: CGFloat = 0) -> EarTagRead? {
+        guard let baseCrop = enlargedCrop(from: image, normalizedRect: normalizedRect) else { return nil }
 
         // Unrotated FIRST: rotation resampling can garble digits into other,
         // plausible-looking digits (field case: 2962212 read as 7177967 after
@@ -173,8 +186,7 @@ final class EarTagReaderService {
 
     /// Crops the normalized rect out of the frame and upscales it so the
     /// recognizer sees large text instead of a distant tag.
-    private func enlargedCrop(from pixelBuffer: CVPixelBuffer, normalizedRect: CGRect) -> CGImage? {
-        let image = CIImage(cvPixelBuffer: pixelBuffer)
+    private func enlargedCrop(from image: CIImage, normalizedRect: CGRect) -> CGImage? {
         let rect = CGRect(
             x: normalizedRect.minX * image.extent.width,
             y: normalizedRect.minY * image.extent.height,
@@ -196,8 +208,7 @@ final class EarTagReaderService {
     /// plus the blob's principal-axis tilt (radians, image coordinates), used
     /// to rotate the crop level before OCR. Runs on a ~160px-wide downscale,
     /// so the scan plus flood fill costs ~a millisecond.
-    private func yellowBlobRegion(in pixelBuffer: CVPixelBuffer) -> (rect: CGRect, angle: CGFloat)? {
-        let source = CIImage(cvPixelBuffer: pixelBuffer)
+    private func yellowBlobRegion(in source: CIImage) -> (rect: CGRect, angle: CGFloat)? {
         guard source.extent.width > 0 else { return nil }
         let scale = 160 / source.extent.width
         let small = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
