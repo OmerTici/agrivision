@@ -16,6 +16,12 @@ struct EarTagRead {
 final class EarTagReaderService {
     private let ciContext = CIContext()
 
+    /// Debug trail of the most recent readTag call — what pass 1 saw, whether
+    /// a blob was found (pixel count @ tilt), and the zoom pass's raw text.
+    /// Shown in the camera's debug capsule when no tag extracts, so field
+    /// failures pinpoint the failing stage from a screenshot.
+    private(set) var lastDiagnostic = ""
+
     /// Runs OCR on a live camera frame and returns the first text matching the
     /// ear-tag pattern, normalized (e.g. "TR201755219"). Two passes: if the
     /// full-frame read sees digits but no clean tag (small/angled tag in a
@@ -28,10 +34,13 @@ final class EarTagReaderService {
         // full-frame pass routinely reads just the fat serial; settling for
         // that here is what made "TR 20" flicker in and out.
         var fallback: EarTagRead?
+        lastDiagnostic = ""
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
         let observations = Self.recognize(with: handler, minimumTextHeight: 0.02)
-        if let tag = Self.extractTag(from: Self.joinedText(of: observations)) {
+        let pass1Text = Self.joinedText(of: observations)
+        lastDiagnostic = "p1'\(pass1Text.suffix(10))'"
+        if let tag = Self.extractTag(from: pass1Text) {
             // Cut a display crop around the text that produced the read.
             let crop = Self.digitRegion(of: observations)
                 .flatMap { enlargedCrop(from: pixelBuffer, normalizedRect: $0) }
@@ -47,10 +56,13 @@ final class EarTagReaderService {
         // header, not just the fat serial. A false blob (straw, bucket) wastes
         // one OCR pass; the format filter and voting keep junk from locking.
         if let blob = yellowBlobRegion(in: pixelBuffer) {
+            lastDiagnostic += " b\(Int(blob.angle * 180 / .pi))°"
             if let read = zoomRead(pixelBuffer, normalizedRect: blob.rect, levelBy: blob.angle) {
                 if read.tag.hasPrefix("TR") { return read }
                 if fallback == nil { fallback = read }
             }
+        } else {
+            lastDiagnostic += " b:none"
         }
 
         // Third pass: no readable result yet, but OCR saw some digits — zoom
@@ -88,7 +100,9 @@ final class EarTagReaderService {
             guard let crop = rotated(baseCrop, by: rotation) else { continue }
             let handler = VNImageRequestHandler(cgImage: crop, orientation: .up, options: [:])
             let zoomed = Self.recognize(with: handler, minimumTextHeight: 0)
-            if let tag = Self.extractTag(from: Self.joinedText(of: zoomed)) {
+            let zoomText = Self.joinedText(of: zoomed)
+            if rotation == attempts.first { lastDiagnostic += " z'\(zoomText.suffix(10))'" }
+            if let tag = Self.extractTag(from: zoomText) {
                 let read = EarTagRead(tag: tag, crop: UIImage(cgImage: crop))
                 if tag.hasPrefix("TR") { return read }
                 if fallback == nil { fallback = read }

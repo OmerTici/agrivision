@@ -877,10 +877,13 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastOCRAt = now
 
         guard let read = earTagReader.readTag(in: pixelBuffer, orientation: .up) else {
+            // Surface the reader's stage trail so field failures show WHERE
+            // the pipeline stopped (pass-1 text / blob / zoom text).
+            let diag = earTagReader.lastDiagnostic
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.scanMode == .earTag else { return }
                 self.cowVisible = false
-                self.debugReadout = "camera.tagHint"
+                self.debugReadout = diag.isEmpty ? "camera.tagHint" : diag
             }
             return
         }
