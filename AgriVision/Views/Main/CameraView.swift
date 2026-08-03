@@ -216,10 +216,14 @@ final class CameraModel: NSObject, ObservableObject {
     /// on every camera frame.
     private var lastOCRAt: Date?
     private let ocrInterval: TimeInterval = 0.25
-    /// Votes per candidate read this scan session (videoQueue only). Plurality
-    /// voting instead of consecutive-pass: a stable misread can be overtaken
-    /// by the true tag instead of winning a race to two-in-a-row.
+    /// Votes per candidate read this scan session, keyed by serial digits so
+    /// full ("TR201755219") and header-missed ("1755219") reads of the SAME
+    /// physical tag pool their votes instead of competing (videoQueue only).
+    /// Plurality voting: a stable misread can be overtaken by the true tag.
     private var tagVotes: [String: Int] = [:]
+    /// The most complete textual form seen per serial key (TR-prefixed beats
+    /// bare serial) — what actually gets displayed on lock.
+    private var tagBestForm: [String: String] = [:]
     /// The farmer's herd tags — reads that match one lock sooner (videoQueue only).
     private var knownTags: [String] = []
     /// Mirror of `captureMode` for use on `videoQueue` (avoid reading @Published off-main).
@@ -374,6 +378,7 @@ final class CameraModel: NSObject, ObservableObject {
             self?.isEarTagMode = mode == .earTag
             self?.earTagLocked = false
             self?.tagVotes = [:]
+            self?.tagBestForm = [:]
             self?.qualifyingSince = nil
             self?.muzzleSeekSince = nil
             self?.hasAutoCaptured = false
@@ -390,6 +395,7 @@ final class CameraModel: NSObject, ObservableObject {
         videoQueue.async { [weak self] in
             self?.earTagLocked = false
             self?.tagVotes = [:]
+            self?.tagBestForm = [:]
         }
     }
 
@@ -870,10 +876,16 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
-        tagVotes[tag, default: 0] += 1
-        let votes = tagVotes[tag] ?? 0
-        let rivalBest = tagVotes.lazy.filter { $0.key != tag }.map(\.value).max() ?? 0
-        let matchesHerd = knownTags.contains { EarTagReaderService.matches(stored: $0, read: tag) }
+        let key = EarTagReaderService.serialKey(tag)
+        tagVotes[key, default: 0] += 1
+        if tag.count > (tagBestForm[key]?.count ?? 0) {
+            tagBestForm[key] = tag
+        }
+        let display = tagBestForm[key] ?? tag
+
+        let votes = tagVotes[key] ?? 0
+        let rivalBest = tagVotes.lazy.filter { $0.key != key }.map(\.value).max() ?? 0
+        let matchesHerd = knownTags.contains { EarTagReaderService.matches(stored: $0, read: display) }
         let needed = matchesHerd ? 2 : 3
         let locked = votes >= needed && votes > rivalBest
         if locked { earTagLocked = true }
@@ -881,8 +893,8 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scanMode == .earTag else { return }
             self.cowVisible = true
-            self.debugReadout = tag
-            if locked { self.detectedTag = tag }
+            self.debugReadout = display
+            if locked { self.detectedTag = display }
         }
     }
 
@@ -1415,7 +1427,9 @@ struct CameraScreen: View {
                     .foregroundStyle(AgriColors.purpleDark)
                     .multilineTextAlignment(.center)
 
-                Text(displayTag(tag))
+                // A herd match shows the stored tag (full, farmer-entered form)
+                // rather than the possibly header-less OCR read.
+                Text(animal.map { displayTag($0.tag) } ?? displayTag(tag))
                     .font(.system(size: 16, weight: .semibold, design: .monospaced))
                     .foregroundStyle(AgriColors.purpleDark.opacity(0.75))
                     .padding(.vertical, 6)

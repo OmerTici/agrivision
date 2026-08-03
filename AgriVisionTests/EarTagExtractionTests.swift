@@ -63,6 +63,30 @@ final class EarTagExtractionTests: XCTestCase {
         )
     }
 
+    func testFallbackPicksLongestRunAndNeverMergesAcrossGaps() {
+        // "42" (a pen number) must not fuse with the serial into "421755219".
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "42 1755219"), "1755219")
+        // Longest contiguous run wins over a shorter stray number.
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "1234567 17552190"), "17552190")
+    }
+
+    func testSerialKeyPoolsFullAndHeaderlessReads() {
+        // Full read, province-only-missed read, and bare serial all pool.
+        XCTAssertEqual(
+            EarTagReaderService.serialKey("TR201755219"),
+            EarTagReaderService.serialKey("1755219")
+        )
+        XCTAssertEqual(
+            EarTagReaderService.serialKey("201755219"),
+            EarTagReaderService.serialKey("TR201755219")
+        )
+        // Different serials stay distinct.
+        XCTAssertNotEqual(
+            EarTagReaderService.serialKey("TR201755219"),
+            EarTagReaderService.serialKey("TR201755218")
+        )
+    }
+
     func testMatchesExactAndSerialSuffix() {
         XCTAssertTrue(EarTagReaderService.matches(stored: "TR-20 1755219", read: "TR201755219"))
         // Serial-only read matches the stored full tag by suffix.
