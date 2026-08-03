@@ -70,6 +70,13 @@ final class EarTagExtractionTests: XCTestCase {
         XCTAssertEqual(EarTagReaderService.extractTag(from: "1234567 17552190"), "17552190")
     }
 
+    func testToleratesStraySeparatorLettersAfterTR() {
+        // Newer tags print "TR◦03"; OCR reads the separator as a letter.
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "TRO03 2962212"), "TR032962212")
+        // But words starting with TR never become tags.
+        XCTAssertEqual(EarTagReaderService.extractTag(from: "TRACTOR 1234567"), "1234567")
+    }
+
     func testNineDigitRunRestoresTRPrefix() {
         // 9+ digits include the province code — only the letters were missed.
         XCTAssertEqual(EarTagReaderService.extractTag(from: "201755219"), "TR201755219")

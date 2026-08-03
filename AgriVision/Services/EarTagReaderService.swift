@@ -70,12 +70,19 @@ final class EarTagReaderService {
     private func zoomRead(_ pixelBuffer: CVPixelBuffer, normalizedRect: CGRect, levelBy angle: CGFloat = 0) -> EarTagRead? {
         guard let baseCrop = enlargedCrop(from: pixelBuffer, normalizedRect: normalizedRect) else { return nil }
 
+        // Unrotated FIRST: rotation resampling can garble digits into other,
+        // plausible-looking digits (field case: 2962212 read as 7177967 after
+        // a 49° rotation), so a serial read off the untouched crop must
+        // outrank one from a rotated attempt. The rotated attempts exist to
+        // recover the small TR header — a TR-full read from any attempt still
+        // wins outright.
         var attempts: [CGFloat] = [0]
         if abs(angle) > .pi / 15 {
-            attempts = [-angle, -angle + .pi, 0]
+            attempts = [0, -angle, -angle + .pi]
         }
         // A serial-only read doesn't stop the loop: a later rotation may
-        // recover the full TR-prefixed number.
+        // recover the full TR-prefixed number. Attempt order IS fallback
+        // priority — the first serial-only read (unrotated) is kept.
         var fallback: EarTagRead?
         for rotation in attempts {
             guard let crop = rotated(baseCrop, by: rotation) else { continue }
@@ -291,7 +298,10 @@ final class EarTagReaderService {
     /// gaps there would merge stray numbers (pen numbers, dates) into fake
     /// serials.
     static func extractTag(from text: String) -> String? {
-        if let digits = firstDigitGroup(matching: "TR[\\s\\-]*((?:[0-9][\\s\\-]*){8,14})", in: text),
+        // Up to two stray letters are tolerated after "TR": the header prints
+        // with a separator glyph that OCR reads as a letter ("TR◦03" → "TRO03").
+        // Longer letter runs (TRACTOR…) still fail to the serial fallback.
+        if let digits = firstDigitGroup(matching: "TR[\\s\\-]*[A-Z]{0,2}[\\s\\-]*((?:[0-9][\\s\\-]*){8,14})", in: text),
            (8...14).contains(digits.count) {
             return "TR\(digits)"
         }
