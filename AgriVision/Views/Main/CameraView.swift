@@ -221,14 +221,20 @@ final class CameraModel: NSObject, ObservableObject {
     /// Ear-tag frame grabbing (videoQueue only): the moment a tag blob is
     /// seen, up to 4 full-res frames are copied over ~half a second, then
     /// read in the background — the farmer aims for ~1s and can lower the
-    /// phone while OCR runs.
-    private var earShots: [CGImage] = []
+    /// phone while OCR runs. Each shot carries its tag-region sharpness so
+    /// the reader can start from the crispest frame.
+    private var earShots: [(image: CGImage, sharpness: Double)] = []
     private var earFirstShotAt: Date?
     private var earLastShotAt: Date?
     private var earProcessing = false
     private let earShotTarget = 4
     private let earShotSpacing: TimeInterval = 0.12
     private let earCollectWindow: TimeInterval = 0.9
+    /// Laplacian-variance floor below which a grabbed frame is motion smear
+    /// and never worth a shot slot — the throttled retry grabs a steadier
+    /// frame instead. Deliberately permissive: readable tags score in the
+    /// tens-to-hundreds; single digits mean visible smear.
+    private let earMinShotSharpness = 6.0
     /// Blob size (downscale px) needed to START a round — smaller tags get a
     /// "get closer" hint instead of burning a doomed read. Readable field
     /// tags measured 160-1155 px; failures were well under 90.
@@ -883,7 +889,8 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         let now = Date()
         if let until = earCooldownUntil, now < until { return }
 
-        let blobPixels = earTagReader.tagBlobPixels(in: pixelBuffer)
+        let probe = earTagReader.tagBlobProbe(in: pixelBuffer)
+        let blobPixels = probe?.pixels ?? 0
         let collecting = earFirstShotAt != nil
         // A round only STARTS on a tag big enough to plausibly read — a small
         // distant blob gets "get closer" guidance instead of a doomed round
@@ -894,9 +901,17 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         if usable, earShots.count < earShotTarget,
            earLastShotAt.map({ now.timeIntervalSince($0) >= earShotSpacing }) ?? true,
            let shot = earTagReader.snapshot(pixelBuffer) {
-            earShots.append(shot)
+            // Throttle on every grab ATTEMPT (accepted or not) so a shaky
+            // stretch costs bounded CPU; the collect window leaves room for
+            // several retries. The round clock starts on the first attempt —
+            // a hopelessly smeared round should still end in guidance, not
+            // hang collecting forever.
             earLastShotAt = now
             if earFirstShotAt == nil { earFirstShotAt = now }
+            let sharpness = earTagReader.sharpness(of: shot, in: probe?.rect)
+            if sharpness >= earMinShotSharpness {
+                earShots.append((shot, sharpness))
+            }
         }
 
         if let first = earFirstShotAt,
@@ -924,9 +939,11 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
     }
 
-    /// Reads the grabbed frames in the background and merges: any TR-full
-    /// read wins; otherwise the majority serial. The farmer is free to lower
-    /// the phone the moment collection ends.
+    /// Reads the grabbed frames in the background (sharpest first) and
+    /// merges by cross-frame agreement: two frames matching on serial confirm
+    /// a tag; conflicting one-off reads fail the round rather than guess
+    /// (see EarTagReaderService.winningKey). The farmer is free to lower the
+    /// phone the moment collection ends.
     private func beginEarTagProcessing() {
         earProcessing = true
         let shots = earShots
@@ -942,41 +959,73 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         earProcessQueue.async { [weak self] in
             guard let self else { return }
+            // Sharpest first: the crispest frame is likeliest to read clean,
+            // and confirmation (below) then needs only one more agreeing read.
+            let ordered = shots.sorted { $0.sharpness > $1.sharpness }
             var reads: [(read: EarTagRead, shot: CGImage)] = []
+            var counts: [String: Int] = [:]
+            // "TR xx" headers sighted anywhere this round — a frame whose
+            // serial read failed can still contribute its header.
+            var headers: [String] = []
             var diag = ""
-            for shot in shots {
-                if let read = self.earTagReader.readTag(in: shot) {
-                    reads.append((read, shot))
-                    if read.tag.hasPrefix("TR") { break }  // best possible — stop early
+            for shot in ordered {
+                let read = self.earTagReader.readTag(in: shot.image)
+                if let header = self.earTagReader.lastSeenHeader { headers.append(header) }
+                if let read {
+                    reads.append((read, shot.image))
+                    let key = EarTagReaderService.serialKey(read.tag)
+                    counts[key, default: 0] += 1
+                    // Two independent frames agreeing on the serial — that's
+                    // a confirmed tag; a single garbled-but-plausible read
+                    // can no longer lock on its own when another frame
+                    // remains to contradict it.
+                    if counts[key] == 2 { break }
                 } else {
                     diag = self.earTagReader.lastDiagnostic
                 }
             }
 
-            // Merge: TR-full beats serial-only; ties go to the most common
-            // serial across frames.
+            // Merge by vote policy: agreement beats structure beats nothing;
+            // contradictory rounds fail (rescan is cheaper than a wrong lock).
             var winner: EarTagRead?
             var winnerShot: CGImage?
-            if let full = reads.first(where: { $0.read.tag.hasPrefix("TR") }) {
-                winner = full.read
-            } else if !reads.isEmpty {
-                var counts: [String: Int] = [:]
-                for entry in reads { counts[EarTagReaderService.serialKey(entry.read.tag), default: 0] += 1 }
-                let bestKey = counts.max(by: { $0.value < $1.value })?.key
-                if let best = reads.last(where: { EarTagReaderService.serialKey($0.read.tag) == bestKey }) {
+            if let key = EarTagReaderService.winningKey(for: reads.map(\.read.tag)) {
+                let keyed = reads.filter { EarTagReaderService.serialKey($0.read.tag) == key }
+                // Prefer the TR-full form of the winning serial for display.
+                if let best = keyed.last(where: { $0.read.tag.hasPrefix("TR") }) ?? keyed.last {
                     winner = best.read
                     winnerShot = best.shot
                 }
             }
 
-            // Serial-only winner: spend one thorough pass on its frame to
-            // recover the "TR xx" header — free, the farmer isn't waiting on
-            // aim anymore. Only accepted if it's the SAME tag (serial match).
-            if let current = winner, !current.tag.hasPrefix("TR"), let shot = winnerShot,
-               let full = self.earTagReader.readTag(in: shot, thorough: true),
-               full.tag.hasPrefix("TR"),
-               EarTagReaderService.serialKey(full.tag) == EarTagReaderService.serialKey(current.tag) {
-                winner = EarTagRead(tag: full.tag, crop: current.crop ?? full.crop)
+            // Serial-only winner: hunt the "TR xx" header with thorough
+            // passes — winner's frame first, then the next-sharpest frames —
+            // free, the farmer isn't waiting on aim anymore. Only accepted
+            // when it's the SAME tag (serial match).
+            if let current = winner, !current.tag.hasPrefix("TR") {
+                var candidates: [CGImage] = []
+                if let shot = winnerShot { candidates.append(shot) }
+                candidates += ordered.map(\.image).filter { $0 !== winnerShot }
+                for shot in candidates.prefix(3) {
+                    let full = self.earTagReader.readTag(in: shot, thorough: true)
+                    if let header = self.earTagReader.lastSeenHeader { headers.append(header) }
+                    if let full, full.tag.hasPrefix("TR"),
+                       EarTagReaderService.serialKey(full.tag) == EarTagReaderService.serialKey(current.tag) {
+                        winner = EarTagRead(tag: full.tag, crop: current.crop ?? full.crop)
+                        break
+                    }
+                }
+            }
+
+            // Still headerless: pool the round's header sightings. One frame
+            // catching "TR 43" while another read the serial is the same tag
+            // seen twice — combine them. Conflicting sightings pool nothing.
+            if let current = winner, !current.tag.hasPrefix("TR"),
+               let header = Set(headers).count == 1 ? headers.first : nil {
+                winner = EarTagRead(
+                    tag: EarTagReaderService.completed(tag: current.tag, pooledHeader: header),
+                    crop: current.crop
+                )
             }
 
             DispatchQueue.main.async { [weak self] in
@@ -995,6 +1044,15 @@ extension CameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
                         self?.earProcessing = false
                     }
                 } else {
+                    // Keep the evidence: the sharpest frame + diagnostics go
+                    // to the local failure log (Settings → export) so field
+                    // failures become tuning/eval data instead of anecdotes.
+                    if let best = ordered.first {
+                        let info = reads.isEmpty
+                            ? diag
+                            : "conflict: " + reads.map(\.read.tag).joined(separator: ",")
+                        ScanDiagnostics.shared.recordFailure(frame: best.image, diagnostic: info)
+                    }
                     // No click required: brief guidance toast, then scanning
                     // auto-resumes (with a cooldown so the same bad view
                     // isn't instantly re-collected).
@@ -1205,6 +1263,17 @@ struct CameraScreen: View {
     /// Called when an unknown identify result's "Enroll" button is tapped. Passes
     /// the just-captured muzzle crop and its full frame so enrollment can reuse them.
     var onRequestEnroll: (_ muzzleCrop: UIImage?, _ fullFrame: UIImage?) -> Void = { _, _ in }
+    /// Called when a not-registered ear-tag read's "Enroll" button is tapped.
+    /// Passes the read tag number so the Add hub starts with it filled in.
+    var onRequestEnrollTag: (_ tag: String) -> Void = { _ in }
+    /// Called when a result card's "Go to profile" button is tapped for a
+    /// matched animal (muzzle identify or ear-tag read).
+    var onOpenAnimal: (_ animalID: UUID) -> Void = { _ in }
+    /// When set, the camera opens directly in ear-tag mode as a tag PICKER
+    /// (Add-Animal tag field): a confirmed read is handed back through this
+    /// closure instead of being matched against the herd, and the
+    /// muzzle/ear-tag method switch is hidden.
+    var onTagScanned: ((String) -> Void)? = nil
 
     @EnvironmentObject private var recognition: CloudRunRecognitionService
     @EnvironmentObject private var store: HerdStore
@@ -1331,6 +1400,9 @@ struct CameraScreen: View {
         }
         .onAppear {
             model.start()
+            if onTagScanned != nil {
+                model.setScanMode(.earTag)
+            }
             if let req = collection {
                 switch req.kind {
                 case .muzzle: model.beginMuzzleCollection(max: req.max)
@@ -1433,8 +1505,9 @@ struct CameraScreen: View {
 
                 // Camera-method switch (identify tab only): shows the CURRENT
                 // mode so the state is always visible, opens a native action
-                // sheet with big tappable rows on tap.
-                if collection == nil, enrollAnimalID == nil {
+                // sheet with big tappable rows on tap. Hidden in tag-picker
+                // mode — that session exists only to read one tag.
+                if collection == nil, enrollAnimalID == nil, onTagScanned == nil {
                     Button {
                         showModeChooser = true
                     } label: {
@@ -1524,25 +1597,38 @@ struct CameraScreen: View {
         store.animals.first { EarTagReaderService.matches(stored: $0.tag, read: tag) }
     }
 
+    /// The unique herd animal one digit-edit away from an unmatched read,
+    /// offered as "Did you mean?" — nil when none or ambiguous.
+    private func nearMatchAnimal(_ tag: String) -> Animal? {
+        guard let storedTag = EarTagReaderService.nearMatch(read: tag, in: store.animals.map(\.tag)) else {
+            return nil
+        }
+        return store.animals.first { $0.tag == storedTag }
+    }
+
     /// Tag numbers display as one unbroken token ("TR201755219") — matching
     /// how farmers write them, with no gap OCR artifacts could hide in.
     private func displayTag(_ tag: String) -> String {
         tag.replacingOccurrences(of: " ", with: "")
     }
 
-    /// Result card for a locked ear-tag read: the matched animal, or a
-    /// not-registered notice showing exactly what was read.
+    /// Result card for a locked ear-tag read: the matched animal, a
+    /// not-registered notice with an enroll shortcut, or — in tag-picker mode
+    /// (Add-Animal tag field) — a confirmation that hands the number back.
     private func earTagOverlay(tag: String) -> some View {
         let animal = animalForTag(tag)
+        let isPicker = onTagScanned != nil
         return VStack {
             Spacer()
 
             VStack(spacing: 14) {
-                Image(systemName: animal != nil ? "checkmark.seal.fill" : "questionmark.circle.fill")
+                Image(systemName: animal != nil || isPicker ? "checkmark.seal.fill" : "questionmark.circle.fill")
                     .font(.system(size: 50))
-                    .foregroundStyle(animal != nil ? AgriColors.successGreen : Self.unknownAmber)
+                    .foregroundStyle(animal != nil || isPicker ? AgriColors.successGreen : Self.unknownAmber)
 
-                Text(animal?.name ?? lang.t("tag.notFound.title"))
+                Text(isPicker
+                        ? lang.t("tag.picker.title")
+                        : (animal?.name ?? lang.t("tag.notFound.title")))
                     .font(AgriFont.bold(22))
                     .foregroundStyle(AgriColors.purpleDark)
                     .multilineTextAlignment(.center)
@@ -1558,33 +1644,57 @@ struct CameraScreen: View {
                 }
 
                 // A herd match shows the stored tag (full, farmer-entered form)
-                // rather than the possibly header-less OCR read.
-                Text(animal.map { displayTag($0.tag) } ?? displayTag(tag))
+                // rather than the possibly header-less OCR read — except in
+                // picker mode, where the OCR read itself is the product.
+                Text(!isPicker ? (animal.map { displayTag($0.tag) } ?? displayTag(tag)) : displayTag(tag))
                     .font(.system(size: 16, weight: .semibold, design: .monospaced))
                     .foregroundStyle(AgriColors.purpleDark.opacity(0.75))
                     .padding(.vertical, 6)
                     .padding(.horizontal, 14)
                     .background(Capsule().fill(AgriColors.purpleDark.opacity(0.06)))
 
-                if animal == nil {
+                if isPicker {
+                    // Warn (but don't block) when the number is already in the
+                    // herd — the likeliest cause is scanning the wrong cow.
+                    if let animal {
+                        Label(lang.t("tag.picker.exists", animal.name), systemImage: "exclamationmark.triangle.fill")
+                            .font(AgriFont.semibold(13))
+                            .foregroundStyle(Self.unknownAmber)
+                            .multilineTextAlignment(.center)
+                    }
+                    primaryButton(lang.t("tag.picker.use")) {
+                        onTagScanned?(displayTag(tag))
+                    }
+                    secondaryButton(lang.t("camera.scanAgain")) { model.resetEarTag() }
+                } else if animal == nil {
                     Text(lang.t("tag.notFound.msg"))
                         .font(AgriFont.regular(15))
                         .foregroundStyle(AgriColors.purpleDark.opacity(0.85))
                         .multilineTextAlignment(.center)
+                    // A read one digit off a UNIQUE herd tag is far likelier
+                    // that animal than a new one — offer it first. Accepting
+                    // swaps the card to the matched state (crop stays visible
+                    // so the farmer can still verify the digits).
+                    if let suggestion = nearMatchAnimal(tag) {
+                        primaryButton(lang.t("tag.didYouMean", suggestion.name, displayTag(suggestion.tag))) {
+                            model.detectedTag = suggestion.tag
+                        }
+                        secondaryButton(lang.t("camera.identify.enroll")) {
+                            onRequestEnrollTag(displayTag(tag))
+                        }
+                    } else {
+                        // Unknown tag is the natural start of an enrollment —
+                        // same shortcut the muzzle identify flow offers,
+                        // carrying the read number into the Add hub's field.
+                        primaryButton(lang.t("camera.identify.enroll")) {
+                            onRequestEnrollTag(displayTag(tag))
+                        }
+                    }
+                    secondaryButton(lang.t("camera.scanAgain")) { model.resetEarTag() }
+                } else if let animal {
+                    primaryButton(lang.t("camera.goProfile")) { onOpenAnimal(animal.id) }
+                    secondaryButton(lang.t("camera.scanAgain")) { model.resetEarTag() }
                 }
-
-                Button {
-                    model.resetEarTag()
-                } label: {
-                    Text(lang.t("camera.scanAgain"))
-                        .font(AgriFont.semibold(17))
-                        .foregroundStyle(AgriColors.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(AgriColors.purple)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
             }
             .padding(24)
             .background(
@@ -1864,6 +1974,9 @@ struct CameraScreen: View {
                             .font(AgriFont.bold(22)).foregroundStyle(AgriColors.purpleDark)
                         Text(lang.t("camera.identify.score", result.score * 100))
                             .font(AgriFont.regular(15)).foregroundStyle(AgriColors.tabInactive)
+                        if let animal = identifiedAnimal(result) {
+                            primaryButton(lang.t("camera.goProfile")) { onOpenAnimal(animal.id) }
+                        }
                         secondaryButton(lang.t("camera.scanAgain")) { model.resetRecognition() }
                     } else {
                         ZStack {
@@ -1900,6 +2013,14 @@ struct CameraScreen: View {
             )
             .padding(.horizontal, 40)
         }
+    }
+
+    /// The herd animal behind a server identify result, for the profile jump.
+    /// Server rows and the local store share the same UUIDs; a miss just
+    /// means the store hasn't refreshed — the button is simply not offered.
+    private func identifiedAnimal(_ result: IdentifyResult) -> Animal? {
+        guard let idString = result.animalId, let id = UUID(uuidString: idString) else { return nil }
+        return store.animals.first { $0.id == id }
     }
 
     private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
