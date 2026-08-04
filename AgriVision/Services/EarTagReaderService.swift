@@ -22,13 +22,69 @@ final class EarTagReaderService {
     /// failures pinpoint the failing stage from a screenshot.
     private(set) var lastDiagnostic = ""
 
-    /// Cheap live-preview probe (~1ms): size (in downscale pixels) of the
-    /// ear-tag blob in frame, 0 when none. Size gates the frame-grab trigger —
-    /// a tag too small to read should prompt "get closer", not burn a doomed
-    /// read round. NO OCR runs on live frames.
-    func tagBlobPixels(in pixelBuffer: CVPixelBuffer) -> Int {
+    /// Province digits of a "TR xx" header sighted anywhere during the most
+    /// recent readTag call, even when that frame's serial read failed — the
+    /// round merge pools these so one frame's header can complete another
+    /// frame's serial.
+    private(set) var lastSeenHeader: String?
+
+    /// Records the first header sighting of the current readTag call.
+    private func noteHeader(in text: String) {
+        if lastSeenHeader == nil { lastSeenHeader = Self.extractHeader(from: text) }
+    }
+
+    /// Cheap live-preview probe (~1ms): size (in downscale pixels) and padded
+    /// normalized region of the ear-tag blob in frame, nil when none. Size
+    /// gates the frame-grab trigger — a tag too small to read should prompt
+    /// "get closer", not burn a doomed read round. The region scopes the
+    /// sharpness check to the tag itself. NO OCR runs on live frames.
+    func tagBlobProbe(in pixelBuffer: CVPixelBuffer) -> (pixels: Int, rect: CGRect)? {
         let ci = CIImage(cvPixelBuffer: pixelBuffer)
-        return (yellowBlobRegion(in: ci) ?? yellowBlobRegion(in: ci, relaxed: true))?.count ?? 0
+        guard let blob = yellowBlobRegion(in: ci) ?? yellowBlobRegion(in: ci, relaxed: true) else {
+            return nil
+        }
+        return (blob.count, blob.rect)
+    }
+
+    /// Variance of the 4-neighbor Laplacian over the (optionally cropped)
+    /// image, on a ~256px grayscale downscale: a motion-blurred tag scores
+    /// near zero, a readable one scores tens-to-hundreds. Used to skip
+    /// smeared frames at grab time and to read the sharpest frames first.
+    func sharpness(of cgImage: CGImage, in normalizedRect: CGRect? = nil) -> Double {
+        var ci = CIImage(cgImage: cgImage)
+        if let r = normalizedRect {
+            let rect = CGRect(
+                x: r.minX * ci.extent.width, y: r.minY * ci.extent.height,
+                width: r.width * ci.extent.width, height: r.height * ci.extent.height
+            ).integral
+            if rect.width >= 16, rect.height >= 16 { ci = ci.cropped(to: rect) }
+        }
+        let down = Self.downscaled(ci, maxDimension: 256)
+        guard let cg = ciContext.createCGImage(down, from: down.extent) else { return 0 }
+        let w = cg.width, h = cg.height
+        guard w >= 3, h >= 3 else { return 0 }
+        var gray = [UInt8](repeating: 0, count: w * h)
+        guard let ctx = CGContext(
+            data: &gray, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return 0 }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        var sum = 0.0, sumSq = 0.0
+        for y in 1..<(h - 1) {
+            for x in 1..<(w - 1) {
+                let i = y * w + x
+                let lap = 4.0 * Double(gray[i])
+                    - Double(gray[i - 1]) - Double(gray[i + 1])
+                    - Double(gray[i - w]) - Double(gray[i + w])
+                sum += lap
+                sumSq += lap * lap
+            }
+        }
+        let n = Double((w - 2) * (h - 2))
+        let mean = sum / n
+        return sumSq / n - mean * mean
     }
 
     /// Copies a camera frame out of the capture pool so it can be processed
@@ -59,6 +115,7 @@ final class EarTagReaderService {
         // try to recover the full number.
         var fallback: EarTagRead?
         lastDiagnostic = ""
+        lastSeenHeader = nil
 
         if let blob = yellowBlobRegion(in: image) ?? yellowBlobRegion(in: image, relaxed: true) {
             lastDiagnostic = "b\(Int(blob.angle * 180 / .pi))°"
@@ -75,11 +132,17 @@ final class EarTagReaderService {
         // Fallback (only when the blob path found nothing): whole-image OCR
         // on a bounded downscale — catches faded/bleached tags the color
         // detector misses. NEVER run on the raw still; 12MP accurate OCR is
-        // a multi-second stall.
+        // a multi-second stall. Barcode gets first crack here too.
         let bounded = Self.downscaled(image, maxDimension: 1600)
+        if let payload = barcodePayload(in: VNImageRequestHandler(ciImage: bounded, options: [:])),
+           let tag = Self.extractTag(from: payload) {
+            lastDiagnostic += " bc'\(payload.suffix(10))'"
+            return EarTagRead(tag: tag, crop: nil)
+        }
         let handler = VNImageRequestHandler(ciImage: bounded, options: [:])
         let observations = Self.recognize(with: handler, minimumTextHeight: 0.02)
         let pass1Text = Self.joinedText(of: observations)
+        noteHeader(in: pass1Text)
         lastDiagnostic += " p1'\(pass1Text.suffix(10))'"
         if let tag = Self.extractTag(from: pass1Text) {
             let crop = Self.digitRegion(of: observations)
@@ -110,6 +173,15 @@ final class EarTagReaderService {
     private func zoomRead(_ image: CIImage, normalizedRect: CGRect, levelBy angle: CGFloat = 0) -> EarTagRead? {
         guard let baseCrop = enlargedCrop(from: image, normalizedRect: normalizedRect) else { return nil }
 
+        // Barcode FIRST: the tag prints its number as a 1D barcode, and a
+        // decoded barcode is exact — no OCR ambiguity, no country assumptions.
+        // Only resolves when the farmer is close, so OCR stays the fallback.
+        if let payload = barcodePayload(in: VNImageRequestHandler(cgImage: baseCrop, orientation: .up, options: [:])),
+           let tag = Self.extractTag(from: payload) {
+            lastDiagnostic += " bc'\(payload.suffix(10))'"
+            return EarTagRead(tag: tag, crop: UIImage(cgImage: baseCrop))
+        }
+
         // Unrotated FIRST: rotation resampling can garble digits into other,
         // plausible-looking digits (field case: 2962212 read as 7177967 after
         // a 49° rotation), so a serial read off the untouched crop must
@@ -129,14 +201,87 @@ final class EarTagReaderService {
             let handler = VNImageRequestHandler(cgImage: crop, orientation: .up, options: [:])
             let zoomed = Self.recognize(with: handler, minimumTextHeight: 0)
             let zoomText = Self.joinedText(of: zoomed)
+            noteHeader(in: zoomText)
             if rotation == attempts.first { lastDiagnostic += " z'\(zoomText.suffix(10))'" }
             if let tag = Self.extractTag(from: zoomText) {
                 let read = EarTagRead(tag: tag, crop: UIImage(cgImage: crop))
                 if tag.hasPrefix("TR") { return read }
                 if fallback == nil { fallback = read }
             }
+
+            // Perspective pass (unrotated attempt only): when the digit line
+            // sits skewed in the crop, warp it level and frontal off the text
+            // observation's own quad, and read once more. One resample — the
+            // same garbling risk as the rotation attempts, so it's outranked
+            // by a clean unrotated read but still beats the blind rotations:
+            // the quad also corrects foreshortening, which rotation can't.
+            if rotation == 0,
+               let obs = Self.digitObservation(of: zoomed),
+               let warped = rectifiedCrop(from: crop, observation: obs) {
+                let wHandler = VNImageRequestHandler(cgImage: warped, orientation: .up, options: [:])
+                let wText = Self.joinedText(of: Self.recognize(with: wHandler, minimumTextHeight: 0))
+                noteHeader(in: wText)
+                lastDiagnostic += " r'\(wText.suffix(10))'"
+                if let tag = Self.extractTag(from: wText) {
+                    let read = EarTagRead(tag: tag, crop: UIImage(cgImage: warped))
+                    if tag.hasPrefix("TR") { return read }
+                    if fallback == nil { fallback = read }
+                }
+            }
         }
         return fallback
+    }
+
+    /// Perspective-corrects the crop so the digit line reads level and
+    /// frontal, using the recognized text's quad corners. Returns nil when
+    /// the quad is already effectively axis-aligned and rectangular — a warp
+    /// there is pure resampling risk with nothing to gain.
+    private func rectifiedCrop(from cgImage: CGImage, observation: VNRectangleObservation) -> CGImage? {
+        let ci = CIImage(cgImage: cgImage)
+        let w = ci.extent.width, h = ci.extent.height
+        func px(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x * w, y: p.y * h) }
+        var tl = px(observation.topLeft), tr = px(observation.topRight)
+        var bl = px(observation.bottomLeft), br = px(observation.bottomRight)
+
+        // Worth warping only when tilted beyond ~4° or one side edge is
+        // noticeably foreshortened (oblique view).
+        let tilt = abs(atan2(tr.y - tl.y, tr.x - tl.x))
+        let leftLen = hypot(tl.x - bl.x, tl.y - bl.y)
+        let rightLen = hypot(tr.x - br.x, tr.y - br.y)
+        guard leftLen > 4, rightLen > 4 else { return nil }
+        let foreshortening = abs(leftLen - rightLen) / max(leftLen, rightLen)
+        guard tilt > .pi / 45 || foreshortening > 0.12 else { return nil }
+
+        // Pad the quad in its own frame: 30% wider each side so no digit is
+        // clipped, 120% above the digit line so the small "TR xx" header
+        // stays in view (mirrors digitRegion's padding), 40% below.
+        func add(_ p: CGPoint, _ v: CGPoint, _ s: CGFloat) -> CGPoint {
+            CGPoint(x: p.x + v.x * s, y: p.y + v.y * s)
+        }
+        let base = CGPoint(x: tr.x - tl.x, y: tr.y - tl.y)
+        let upL = CGPoint(x: tl.x - bl.x, y: tl.y - bl.y)
+        let upR = CGPoint(x: tr.x - br.x, y: tr.y - br.y)
+        tl = add(add(tl, base, -0.3), upL, 1.2)
+        tr = add(add(tr, base, 0.3), upR, 1.2)
+        bl = add(add(bl, base, -0.3), upL, -0.4)
+        br = add(add(br, base, 0.3), upR, -0.4)
+
+        guard let filter = CIFilter(name: "CIPerspectiveCorrection") else { return nil }
+        filter.setValue(ci, forKey: kCIInputImageKey)
+        filter.setValue(CIVector(cgPoint: tl), forKey: "inputTopLeft")
+        filter.setValue(CIVector(cgPoint: tr), forKey: "inputTopRight")
+        filter.setValue(CIVector(cgPoint: bl), forKey: "inputBottomLeft")
+        filter.setValue(CIVector(cgPoint: br), forKey: "inputBottomRight")
+        guard var out = filter.outputImage,
+              out.extent.width > 24, out.extent.height > 12 else { return nil }
+
+        // Same size normalization as enlargedCrop: big text for the
+        // recognizer, bounded cost.
+        let scale = min(4, 1000 / max(out.extent.width, out.extent.height))
+        if abs(scale - 1) > 0.01 {
+            out = out.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        }
+        return ciContext.createCGImage(out, from: out.extent)
     }
 
     /// Rotates an image around its center (0 = passthrough).
@@ -149,6 +294,18 @@ final class EarTagReaderService {
             .translatedBy(x: -center.x, y: -center.y)
         let rotatedCI = ci.transformed(by: transform)
         return ciContext.createCGImage(rotatedCI, from: rotatedCI.extent)
+    }
+
+    /// Decodes the first digit-bearing 1D barcode in view (livestock tags
+    /// print Code 128 / ITF / Code 39 style stripes). Nil when none resolves —
+    /// the common case at a distance; barcodes need more pixels than digits.
+    private func barcodePayload(in handler: VNImageRequestHandler) -> String? {
+        let request = VNDetectBarcodesRequest()
+        request.symbologies = [.code128, .code39, .i2of5, .itf14, .ean13]
+        guard (try? handler.perform([request])) != nil else { return nil }
+        return (request.results ?? [])
+            .compactMap(\.payloadStringValue)
+            .first { $0.filter(\.isNumber).count >= 7 }
     }
 
     private static func recognize(
@@ -184,12 +341,9 @@ final class EarTagReaderService {
             .joined(separator: " ")
     }
 
-    /// Box of the single observation carrying the longest contiguous digit
-    /// run — a union of everything digit-ish can lasso half the scene into
-    /// the crop. Padded extra vertically so the "TR xx" header above the
-    /// serial stays in frame. Normalized Vision coordinates; nil when no
-    /// observation has a 3+ digit run.
-    private static func digitRegion(of observations: [VNRecognizedTextObservation]) -> CGRect? {
+    /// The single observation carrying the longest contiguous digit run —
+    /// the serial line. Nil when no observation has a 3+ digit run.
+    private static func digitObservation(of observations: [VNRecognizedTextObservation]) -> VNRecognizedTextObservation? {
         func longestRun(_ obs: VNRecognizedTextObservation) -> Int {
             let text = obs.topCandidates(1).first?.string ?? ""
             var best = 0, current = 0
@@ -201,6 +355,15 @@ final class EarTagReaderService {
         }
         guard let best = observations.max(by: { longestRun($0) < longestRun($1) }),
               longestRun(best) >= 3 else { return nil }
+        return best
+    }
+
+    /// Box of the serial-line observation — a union of everything digit-ish
+    /// can lasso half the scene into the crop. Padded extra vertically so
+    /// the "TR xx" header above the serial stays in frame. Normalized Vision
+    /// coordinates.
+    private static func digitRegion(of observations: [VNRecognizedTextObservation]) -> CGRect? {
+        guard let best = digitObservation(of: observations) else { return nil }
         let box = best.boundingBox
         let padded = box.insetBy(dx: -(box.width * 0.6 + 0.02), dy: -(box.height * 1.2 + 0.02))
         return padded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
@@ -376,6 +539,17 @@ final class EarTagReaderService {
            (8...14).contains(digits.count) {
             return "TR\(digits)"
         }
+        // Header and serial as separate finds: the tag prints a barcode
+        // stripe between the "TR xx" header and the serial, and Vision often
+        // OCRs it as junk letters ("TR 43 ıIıIı 1608816") — which breaks the
+        // contiguous pattern above and used to coin-flip reads down to
+        // serial-only. The province must still sit right after "TR", and the
+        // serial stays the longest-contiguous-run rule, so stray numbers
+        // can't fuse in; only the junk BETWEEN the parts stops mattering.
+        if let province = extractHeader(from: text),
+           let serial = allMatches(of: "[0-9]{7,12}", in: text).max(by: { $0.count < $1.count }) {
+            return "TR\(province)\(serial)"
+        }
         guard let run = allMatches(of: "[0-9]{7,14}", in: text).max(by: { $0.count < $1.count }) else {
             return nil
         }
@@ -384,6 +558,15 @@ final class EarTagReaderService {
         // complete display. A 7-8 digit run is the serial alone and stays bare:
         // prefixing it would wrongly present a partial number as complete.
         return run.count >= 9 ? "TR\(run)" : run
+    }
+
+    /// The 2-digit province from a standalone "TR xx" header anywhere in the
+    /// text, or nil. Tolerates the same stray separator letters as the full
+    /// pattern; refuses when a third digit follows (that's a number, not the
+    /// header). Also the per-frame evidence for cross-frame header pooling —
+    /// a frame can surface the header even when its serial read fails.
+    static func extractHeader(from text: String) -> String? {
+        firstDigitGroup(matching: "TR[\\s\\-]*[A-Z]{0,2}[\\s\\-]*([0-9]{2})(?![0-9])", in: text)
     }
 
     private static func firstDigitGroup(matching pattern: String, in text: String) -> String? {
@@ -412,6 +595,43 @@ final class EarTagReaderService {
         return String(digits.suffix(7))
     }
 
+    /// Vote policy across one round's reads (in read order). Returns the
+    /// winning serial key, or nil when the round is too contradictory to
+    /// trust — a wrong lock is worse than a rescan.
+    ///
+    /// - Two frames agreeing on a serial confirm it (misreads are random and
+    ///   don't repeat; the true number does).
+    /// - A lone read with no contradiction is accepted — most rounds yield
+    ///   one usable frame and failing them all would tank scan success.
+    /// - Conflicting serials with no majority fall to structure: exactly one
+    ///   candidate backed by a TR-full read (validated "TR"+8-14-digit shape)
+    ///   wins; otherwise the round fails.
+    static func winningKey(for tags: [String]) -> String? {
+        var counts: [String: Int] = [:]
+        for tag in tags { counts[serialKey(tag), default: 0] += 1 }
+        guard !counts.isEmpty else { return nil }
+        if counts.count == 1 { return counts.keys.first }
+        let top = counts.values.max() ?? 0
+        let leaders = counts.filter { $0.value == top }.keys
+        if leaders.count == 1, top >= 2 { return leaders.first }
+        let trKeys = Set(tags.filter { $0.hasPrefix("TR") }.map(serialKey))
+        let trLeaders = leaders.filter(trKeys.contains)
+        return trLeaders.count == 1 ? trLeaders.first : nil
+    }
+
+    /// Completes a serial-only read with a province header pooled from other
+    /// frames of the same round. Only a bare 7-8 digit serial qualifies — a
+    /// 9+ digit read already contains the province (its "TR" was restored by
+    /// extractTag), and prefixing anything else would fabricate a number.
+    static func completed(tag: String, pooledHeader: String?) -> String {
+        guard let header = pooledHeader,
+              !tag.hasPrefix("TR"),
+              (7...8).contains(tag.count),
+              tag.allSatisfy(\.isNumber)
+        else { return tag }
+        return "TR\(header)\(tag)"
+    }
+
     /// Whether a stored (farmer-entered) tag matches an OCR read. Exact match
     /// after normalizing, or — for TR-less reads of the big serial line — the
     /// stored tag ending with the read digits (≥7 digits keeps this safe).
@@ -427,5 +647,45 @@ final class EarTagReaderService {
     /// uppercase alphanumerics only ("tr-0412 " == "TR0412").
     static func normalize(_ tag: String) -> String {
         String(tag.uppercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+    }
+
+    /// The single stored tag within one edit of an unmatched read's serial —
+    /// the "Did you mean?" suggestion. One edit covers the dominant OCR
+    /// failure (a substituted digit: 6↔8, 1↔7); requiring a UNIQUE candidate
+    /// makes a wrong suggestion rarer than no suggestion. Comparison is on
+    /// the trailing-7 serial key, so header presence doesn't matter.
+    static func nearMatch(read: String, in storedTags: [String]) -> String? {
+        let r = serialKey(read)
+        guard r.count >= 6 else { return nil }
+        var candidate: String?
+        for stored in storedTags {
+            let s = serialKey(stored)
+            guard s != r, withinOneEdit(r, s) else { continue }
+            if candidate != nil { return nil }  // ambiguous — offer nothing
+            candidate = stored
+        }
+        return candidate
+    }
+
+    /// Levenshtein distance ≤ 1: equal length with at most one substitution,
+    /// or off-by-one length with one insertion/deletion.
+    static func withinOneEdit(_ a: String, _ b: String) -> Bool {
+        let x = Array(a), y = Array(b)
+        if x.count == y.count {
+            return zip(x, y).reduce(0) { $0 + ($1.0 == $1.1 ? 0 : 1) } <= 1
+        }
+        let (short, long) = x.count < y.count ? (x, y) : (y, x)
+        guard long.count - short.count == 1 else { return false }
+        var i = 0, j = 0, skipped = false
+        while i < short.count && j < long.count {
+            if short[i] == long[j] {
+                i += 1; j += 1
+            } else if skipped {
+                return false
+            } else {
+                skipped = true; j += 1
+            }
+        }
+        return true
     }
 }
