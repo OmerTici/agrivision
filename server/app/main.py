@@ -216,7 +216,10 @@ async def identify(
 @app.post("/enroll", response_model=EnrollResponse)
 async def enroll(
     animal_id: str = Form(...),
-    images: list[UploadFile] = File(...),
+    # Muzzle scans are optional at creation: a photos-only enroll uploads
+    # gallery media without touching the embedding index, and the muzzle
+    # burst can be added later from the animal's page.
+    images: list[UploadFile] = File(default=[]),
     full_images: list[UploadFile] = File(default=[]),
     frame_images: list[UploadFile] = File(default=[]),
     uid: str = Depends(current_uid),
@@ -244,7 +247,9 @@ async def enroll(
         rlog.detail["frame_image_bytes"] = sum(len(data) for data in raw_frames)
         _decode_jpegs(raw_frames)
         embed_started = time.perf_counter()
-        vecs = _embed(pil)  # ONE batched forward pass for all muzzle crops
+        # ONE batched forward pass for all muzzle crops; skipped entirely for
+        # a photos-only enroll (also keeps it off the 503 model-loading path).
+        vecs = _embed(pil) if pil else []
         rlog.detail["embed_ms"] = _ms(embed_started)
         paths = []
         # On partial upload failure we return 502 and skip the DB insert; already-
@@ -264,7 +269,7 @@ async def enroll(
             raise HTTPException(status_code=502, detail="image storage upload failed")
         rlog.detail["upload_ms"] = _ms(upload_started)
         insert_started = time.perf_counter()
-        count = await db.insert_embeddings(animal_id, uid, vecs, paths)
+        count = await db.insert_embeddings(animal_id, uid, vecs, paths) if paths else 0
         rlog.detail["insert_ms"] = _ms(insert_started)
         rlog.detail["enrolled_count"] = count
         rlog.result = "enrolled"

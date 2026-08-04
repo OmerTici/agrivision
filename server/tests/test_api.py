@@ -250,6 +250,32 @@ def test_enroll_with_frame_images(client, jpeg_bytes, monkeypatch):
     assert sum("/frame/" in p for p in uploads) == 5
 
 
+def test_enroll_photos_only_skips_embedding(client, jpeg_bytes, monkeypatch):
+    # Muzzle scans are optional at creation: cow photos upload alone, and
+    # neither the embedder nor the embeddings table is touched.
+    uploads = []
+
+    async def fake_animal_owned(animal_id, owner):
+        return True
+
+    async def fake_upload(path, data):
+        uploads.append(path)
+        return path
+
+    async def fake_insert(animal_id, owner, vecs, image_paths):
+        raise AssertionError("photos-only enroll must not insert embeddings")
+
+    monkeypatch.setattr(main_mod.db, "animal_owned", fake_animal_owned)
+    monkeypatch.setattr(main_mod.storage, "upload_jpeg", fake_upload)
+    monkeypatch.setattr(main_mod.db, "insert_embeddings", fake_insert)
+
+    files = [("full_images", (f"f{i}.jpg", jpeg_bytes, "image/jpeg")) for i in range(2)]
+    r = client.post("/enroll", data={"animal_id": ANIMAL}, files=files)
+    assert r.status_code == 200
+    assert r.json() == {"enrolled_count": 0, "full_images_stored": 2, "frame_images_stored": 0}
+    assert all("/full/" in p for p in uploads)
+
+
 MODEL = "conservationxlabs/miewid-msv3@4f1d7f2b521149e5fe34bb85f377248ce9971a7d"
 
 
