@@ -9,6 +9,8 @@ struct SettingsScreen: View {
     @State private var autoCaptureOn = true
     @State private var metricUnits = true
     @State private var accountSheet: AccountSheet?
+    /// Count of locally captured failed ear-tag scans (refreshed on appear).
+    @State private var scanFailureCount = 0
 
     /// Set when presented as a sheet (from the Home gear); nil when embedded.
     var onClose: (() -> Void)? = nil
@@ -21,6 +23,7 @@ struct SettingsScreen: View {
                 accountSection
                 languageSection
                 preferencesSection
+                diagnosticsSection
                 aboutSection
                 signOutButton
             }
@@ -28,6 +31,7 @@ struct SettingsScreen: View {
             .padding(.top, 12)
             .padding(.bottom, AgriLayout.tabBarClearance)
         }
+        .onAppear { scanFailureCount = ScanDiagnostics.shared.captureCount() }
         .sheet(item: $accountSheet) { sheet in
             switch sheet {
             case .email:
@@ -199,6 +203,56 @@ struct SettingsScreen: View {
                     title: lang.t("settings.metric"),
                     isOn: $metricUnits
                 )
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+            .background(settingsCardBackground)
+        }
+    }
+
+    /// Field-failure captures from the ear-tag scanner: failed rounds save
+    /// their sharpest frame + pipeline diagnostics on-device; this section
+    /// shows the count and offers export (share sheet) and clear.
+    private var diagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: lang.t("settings.diagnostics"))
+
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    IconBadge(icon: "camera.metering.unknown", tint: Color(red: 222 / 255, green: 138 / 255, blue: 60 / 255))
+                    Text(lang.t("settings.scanFailures"))
+                        .font(AgriFont.regular(15))
+                        .foregroundStyle(AgriColors.purpleDark)
+                    Spacer()
+                    Text("\(scanFailureCount)")
+                        .font(AgriFont.semibold(14))
+                        .foregroundStyle(AgriColors.tabInactive)
+                }
+                .padding(.vertical, 12)
+
+                if scanFailureCount > 0 {
+                    Divider().opacity(0.5)
+                    ShareLink(items: ScanDiagnostics.shared.exportURLs()) {
+                        LinkRow(
+                            icon: "square.and.arrow.up.fill",
+                            tint: AgriColors.purple,
+                            title: lang.t("settings.exportScans")
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    Divider().opacity(0.5)
+                    Button {
+                        ScanDiagnostics.shared.clear()
+                        scanFailureCount = 0
+                    } label: {
+                        LinkRow(
+                            icon: "trash.fill",
+                            tint: Color(red: 214 / 255, green: 84 / 255, blue: 84 / 255),
+                            title: lang.t("settings.clearScans")
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 4)

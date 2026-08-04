@@ -10,7 +10,11 @@ struct MainTabView: View {
     /// Muzzle carried from an unknown identify result into the Add-Animal hub.
     @State private var carriedMuzzleCrop: UIImage?
     @State private var carriedMuzzleFull: UIImage?
-
+    /// Tag number carried from a not-registered ear-tag read into the Add hub.
+    @State private var carriedTag: String?
+    /// Animal whose profile the Animals tab should open on arrival (camera
+    /// match -> "Go to profile"). Cleared once the tab consumes it.
+    @State private var openAnimalID: UUID?
     var body: some View {
         ZStack(alignment: .bottom) {
             AgriColors.appBackground
@@ -23,6 +27,7 @@ struct MainTabView: View {
             if selected != .camera {
                 AgriTabBar(selected: $selected)
             }
+
             VStack {
                 ServerStatusPill(status: recognition.status,
                                  lang: lang,
@@ -48,6 +53,7 @@ struct MainTabView: View {
             if tab != .addAnimal {
                 carriedMuzzleCrop = nil
                 carriedMuzzleFull = nil
+                carriedTag = nil
             }
         }
     }
@@ -61,7 +67,11 @@ struct MainTabView: View {
                 onOpenSettings: { selected = .settings }
             )
         case .animals:
-            AnimalsScreen(onAddAnimal: { selected = .addAnimal })
+            AnimalsScreen(
+                onAddAnimal: { selected = .addAnimal },
+                deepLinkAnimalID: openAnimalID,
+                onDeepLinkHandled: { openAnimalID = nil }
+            )
         case .camera:
             CameraScreen(
                 onClose: { selected = .home },
@@ -70,13 +80,24 @@ struct MainTabView: View {
                     carriedMuzzleCrop = crop
                     carriedMuzzleFull = full
                     selected = .addAnimal
+                },
+                onRequestEnrollTag: { tag in
+                    // Not-registered ear tag -> Add hub with the number filled in.
+                    carriedTag = tag
+                    selected = .addAnimal
+                },
+                onOpenAnimal: { id in
+                    // Matched animal -> its profile on the Animals tab.
+                    openAnimalID = id
+                    selected = .animals
                 }
             )
         case .addAnimal:
             AddAnimalScreen(
                 onOpenHerd: { selected = .animals },
                 carriedMuzzleCrop: carriedMuzzleCrop,
-                carriedMuzzleFull: carriedMuzzleFull
+                carriedMuzzleFull: carriedMuzzleFull,
+                carriedTag: carriedTag
             )
         case .settings:
             SettingsScreen()

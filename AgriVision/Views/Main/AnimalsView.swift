@@ -7,8 +7,13 @@ struct AnimalsScreen: View {
     @ObservedObject private var lang = LanguageManager.shared
     /// Switches to the full-screen Add Animal tab (not a sheet).
     var onAddAnimal: () -> Void
+    /// When set, the screen opens straight onto this animal's profile (deep
+    /// link from a camera match). Consumed once via `onDeepLinkHandled`.
+    var deepLinkAnimalID: UUID? = nil
+    var onDeepLinkHandled: () -> Void = {}
     @State private var searchText = ""
     @State private var filter: SexFilter = .all
+    @State private var pushedAnimalID: UUID?
     private let repository = AnimalRepository()
 
     enum SexFilter: String, CaseIterable {
@@ -91,6 +96,15 @@ struct AnimalsScreen: View {
             .refreshable { await store.load() }
             .background(AgriColors.appBackground)
             .toolbar(.hidden, for: .navigationBar)
+            // Deep-link push (camera match -> profile). The list's own
+            // NavigationLinks are untouched; this only serves the camera jump.
+            .navigationDestination(item: $pushedAnimalID) { id in
+                if let animal = store.animals.first(where: { $0.id == id }) {
+                    AnimalDetailView(animal: animal)
+                }
+            }
+            .onAppear { consumeDeepLink() }
+            .onChange(of: deepLinkAnimalID) { _, _ in consumeDeepLink() }
             .overlay(alignment: .bottom) {
                 if let archived = store.recentlyArchived {
                     UndoToast(
@@ -110,6 +124,15 @@ struct AnimalsScreen: View {
             }
             .animation(.spring(duration: 0.3), value: store.recentlyArchived?.id)
         }
+    }
+
+    /// Pushes the deep-linked animal's profile and hands the token back so a
+    /// later manual visit to the tab doesn't re-open it.
+    private func consumeDeepLink() {
+        guard let id = deepLinkAnimalID,
+              store.animals.contains(where: { $0.id == id }) else { return }
+        pushedAnimalID = id
+        onDeepLinkHandled()
     }
 
     private func archive(_ animal: Animal) {
@@ -288,10 +311,14 @@ private struct AnimalCard: View {
 struct AnimalDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: HerdStore
+    @EnvironmentObject private var recognition: CloudRunRecognitionService
     @ObservedObject private var lang = LanguageManager.shared
     @State private var animal: Animal
     @State private var showEdit = false
     @State private var showDeleteConfirm = false
+    /// Late muzzle enrollment (muzzle is optional at creation; this is the
+    /// "add it anytime" path the Add hub promises).
+    @State private var showMuzzleEnroll = false
     private let repository = AnimalRepository()
 
     init(animal: Animal) {
@@ -303,6 +330,9 @@ struct AnimalDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 topBar
                 identityCard
+                if !animal.muzzleRegistered {
+                    scanMuzzleButton
+                }
                 infoGrid
                 AnimalPhotosGallery(
                     animalID: animal.id,
@@ -354,6 +384,43 @@ struct AnimalDetailView: View {
         } message: {
             Text(lang.t("delete.confirmBody"))
         }
+        .fullScreenCover(isPresented: $showMuzzleEnroll) {
+            CameraScreen(
+                onClose: { showMuzzleEnroll = false },
+                onEnrollSuccess: {
+                    // Optimistic flip; load() reconciles with the server's
+                    // derived flag (true once embeddings exist).
+                    animal.muzzleRegistered = true
+                    Task { await store.load() }
+                },
+                enrollAnimalID: animal.id.uuidString
+            )
+            .environmentObject(store)
+            .environmentObject(recognition)
+        }
+    }
+
+    /// Entry point for adding the optional muzzle ID after creation — the
+    /// same 5-scan enrollment session the Add hub runs.
+    private var scanMuzzleButton: some View {
+        Button {
+            showMuzzleEnroll = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "viewfinder")
+                    .font(.system(size: 16, weight: .semibold))
+                Text(lang.t("detail.addMuzzle"))
+                    .font(AgriFont.semibold(14))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AgriColors.purple)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func performDelete() {

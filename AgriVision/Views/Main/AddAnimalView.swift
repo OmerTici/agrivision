@@ -12,6 +12,9 @@ struct AddAnimalScreen: View {
     /// the muzzle scans as scan 1 of 5.
     let carriedMuzzleCrop: UIImage?
     let carriedMuzzleFull: UIImage?
+    /// Tag number carried in from a not-registered ear-tag read, if any.
+    /// Prefills the tag field.
+    let carriedTag: String?
 
     private let repository = AnimalRepository()
 
@@ -55,10 +58,12 @@ struct AddAnimalScreen: View {
     private enum ActiveCamera: Identifiable {
         case muzzle
         case cow
+        case earTag
         var id: String {
             switch self {
             case .muzzle: return "muzzle"
             case .cow: return "cow"
+            case .earTag: return "earTag"
             }
         }
     }
@@ -66,22 +71,41 @@ struct AddAnimalScreen: View {
     init(
         onOpenHerd: @escaping () -> Void = {},
         carriedMuzzleCrop: UIImage? = nil,
-        carriedMuzzleFull: UIImage? = nil
+        carriedMuzzleFull: UIImage? = nil,
+        carriedTag: String? = nil
     ) {
         self.onOpenHerd = onOpenHerd
         self.carriedMuzzleCrop = carriedMuzzleCrop
         self.carriedMuzzleFull = carriedMuzzleFull
+        self.carriedTag = carriedTag
         _muzzleCrops = State(initialValue: carriedMuzzleCrop.map { [$0] } ?? [])
         _muzzleSourceFrames = State(initialValue: carriedMuzzleFull.map { [$0] } ?? [])
+        _tag = State(initialValue: carriedTag ?? "")
     }
 
     private var muzzleComplete: Bool { muzzleCrops.count >= Self.muzzleTarget }
+
+    /// Muzzle ID is optional — but once scanning starts, the server needs the
+    /// full burst, so a partial set (1-4) blocks save until finished or removed.
+    private var muzzleStateAllowsSave: Bool { muzzleCrops.isEmpty || muzzleComplete }
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && !nameIsTaken
             && !tag.trimmingCharacters(in: .whitespaces).isEmpty
-            && muzzleComplete
+            && !tagIsTaken
+            && muzzleStateAllowsSave
+    }
+
+    /// True when the entered tag already belongs to another herd animal
+    /// (compared in normalized form, so "tr-0412" == "TR0412"). Blocks save —
+    /// tag numbers are the herd's unique physical identifier.
+    private var tagIsTaken: Bool {
+        let entered = EarTagReaderService.normalize(tag)
+        guard !entered.isEmpty else { return false }
+        return store.animals.contains {
+            $0.id.uuidString != createdAnimalID && EarTagReaderService.normalize($0.tag) == entered
+        }
     }
 
     /// True when the entered name already belongs to another animal in the herd
@@ -164,6 +188,14 @@ struct AddAnimalScreen: View {
                         activeCamera = nil
                     }
                 )
+            case .earTag:
+                CameraScreen(
+                    onClose: { activeCamera = nil },
+                    onTagScanned: { scanned in
+                        tag = scanned
+                        activeCamera = nil
+                    }
+                )
             }
         }
     }
@@ -195,7 +227,7 @@ struct AddAnimalScreen: View {
         }
     }
 
-    // MARK: Muzzle (required, tap to scan)
+    // MARK: Muzzle (optional, tap to scan)
 
     private var muzzleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -203,6 +235,11 @@ struct AddAnimalScreen: View {
                 Text(lang.t("add.muzzle.title"))
                     .font(AgriFont.semibold(15))
                     .foregroundStyle(AgriColors.purpleDark)
+                Text(lang.t("add.optional"))
+                    .font(AgriFont.semibold(11))
+                    .foregroundStyle(AgriColors.tabInactive)
+                    .padding(.vertical, 2).padding(.horizontal, 7)
+                    .background(Capsule().fill(AgriColors.tabInactive.opacity(0.12)))
                 Text("\(muzzleCrops.count)/\(Self.muzzleTarget)")
                     .font(AgriFont.semibold(13))
                     .foregroundStyle(muzzleComplete ? AgriColors.successGreen : AgriColors.purple)
@@ -257,7 +294,7 @@ struct AddAnimalScreen: View {
                     )
                 }
                 .buttonStyle(.plain)
-                Text(lang.t("add.muzzle.hint"))
+                Text(lang.t(muzzleCrops.isEmpty ? "add.muzzle.optionalHint" : "add.muzzle.hint"))
                     .font(AgriFont.regular(12))
                     .foregroundStyle(AgriColors.tabInactive)
             }
@@ -353,11 +390,19 @@ struct AddAnimalScreen: View {
         VStack(spacing: 16) {
             AnimalDetailsForm(
                 name: $name, tag: $tag, breed: $breed, sex: $sex, birthDate: $birthDate,
-                onShuffleName: shuffleName
+                onShuffleName: shuffleName,
+                onScanTag: { activeCamera = .earTag }
             )
 
             if nameIsTaken {
                 Label(lang.t("add.nameTaken"), systemImage: "exclamationmark.triangle.fill")
+                    .font(AgriFont.semibold(12))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if tagIsTaken {
+                Label(lang.t("add.tagTaken"), systemImage: "exclamationmark.triangle.fill")
                     .font(AgriFont.semibold(12))
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -392,7 +437,7 @@ struct AddAnimalScreen: View {
     private var saveButton: some View {
         VStack(spacing: 10) {
             Button(action: save) {
-                Text(lang.t("add.saveEnroll"))
+                Text(lang.t(muzzleCrops.isEmpty ? "add.save" : "add.saveEnroll"))
                     .font(AgriFont.bold(16))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -405,8 +450,10 @@ struct AddAnimalScreen: View {
             .buttonStyle(.plain)
             .disabled(!canSave || isSubmitting)
 
-            if !muzzleComplete {
-                Text(lang.t("add.saveEnrollHint"))
+            // A started-but-incomplete muzzle burst is the one muzzle state
+            // that blocks saving — say why and how to get unstuck.
+            if !muzzleStateAllowsSave {
+                Text(lang.t("add.muzzlePartialHint"))
                     .font(AgriFont.regular(12))
                     .foregroundStyle(AgriColors.tabInactive)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -556,14 +603,19 @@ struct AddAnimalScreen: View {
                     animalID = created.id
                 }
 
-                _ = try await recognition.enroll(
-                    animalID: animalID,
-                    muzzleJpegs: muzzleJpegs,
-                    fullJpegs: fullJpegs,
-                    frameJpegs: frameJpegs
-                )
+                // Muzzle is optional: enroll uploads whatever was gathered
+                // (muzzle burst and/or photos); with nothing to upload the
+                // animal row alone is the whole save.
+                if !muzzleJpegs.isEmpty || !fullJpegs.isEmpty || !frameJpegs.isEmpty {
+                    _ = try await recognition.enroll(
+                        animalID: animalID,
+                        muzzleJpegs: muzzleJpegs,
+                        fullJpegs: fullJpegs,
+                        frameJpegs: frameJpegs
+                    )
+                }
                 await MainActor.run {
-                    store.markLastAddedMuzzleRegistered()
+                    if !muzzleJpegs.isEmpty { store.markLastAddedMuzzleRegistered() }
                     withAnimation { enrollStatus = .success }
                     // Hold the success animation briefly, then reset the form.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
@@ -648,6 +700,9 @@ struct AnimalDetailsForm: View {
     /// When set, a shuffle button beside the name field fills in a fresh
     /// auto-generated name (Add flow only; Edit passes nothing).
     var onShuffleName: (() -> Void)? = nil
+    /// When set, a camera button beside the tag field opens the ear-tag
+    /// scanner to fill the number (Add flow only; Edit passes nothing).
+    var onScanTag: (() -> Void)? = nil
     @ObservedObject private var lang = LanguageManager.shared
 
     static let breeds = ["Holstein", "Angus", "Simmental", "Jersey", "Hereford", "Charolais", "Limousin"]
@@ -673,7 +728,20 @@ struct AnimalDetailsForm: View {
                     .accessibilityLabel(lang.t("add.shuffleName"))
                 }
             }
-            FormField(label: lang.t("add.tag"), placeholder: lang.t("add.tagPh"), text: $tag)
+            HStack(alignment: .bottom, spacing: 8) {
+                FormField(label: lang.t("add.tag"), placeholder: lang.t("add.tagPh"), text: $tag)
+                if let onScanTag {
+                    Button(action: onScanTag) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(AgriColors.purple)
+                            .frame(width: 44, height: 44)
+                            .background(fieldBackground)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(lang.t("add.tag.scan"))
+                }
+            }
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(lang.t("add.breed"))

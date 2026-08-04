@@ -51,12 +51,14 @@
 		A10000000000000000000037 /* RecognitionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000028 /* RecognitionModels.swift */; };
 		A10000000000000000000038 /* MultipartFormData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000029 /* MultipartFormData.swift */; };
 		A10000000000000000000039 /* ImageEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002A /* ImageEncoding.swift */; };
+		A10000000000000000000060 /* ScanDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000050 /* ScanDiagnostics.swift */; };
 		A1000000000000000000003A /* RecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002B /* RecognitionService.swift */; };
 		A1000000000000000000003B /* CloudRunRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002C /* CloudRunRecognitionService.swift */; };
 		A1000000000000000000003C /* AnimalRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002D /* AnimalRepository.swift */; };
 		A1000000000000000000003D /* EventRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000030 /* EventRepository.swift */; };
 		A1000000000000000000003E /* AnimalPhotoLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000031 /* AnimalPhotoLoader.swift */; };
 		A10000000000000000000040 /* AnimalNameGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000040 /* AnimalNameGenerator.swift */; };
+		A10000000000000000000041 /* EarTagReaderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000041 /* EarTagReaderService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -111,6 +113,7 @@
 		B10000000000000000000028 /* RecognitionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionModels.swift; sourceTree = "<group>"; };
 		B10000000000000000000029 /* MultipartFormData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultipartFormData.swift; sourceTree = "<group>"; };
 		B1000000000000000000002A /* ImageEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageEncoding.swift; sourceTree = "<group>"; };
+		B10000000000000000000050 /* ScanDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanDiagnostics.swift; sourceTree = "<group>"; };
 		B1000000000000000000002B /* RecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionService.swift; sourceTree = "<group>"; };
 		B1000000000000000000002C /* CloudRunRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudRunRecognitionService.swift; sourceTree = "<group>"; };
 		B1000000000000000000002D /* AnimalRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimalRepository.swift; sourceTree = "<group>"; };
@@ -119,6 +122,7 @@
 		B10000000000000000000030 /* EventRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventRepository.swift; sourceTree = "<group>"; };
 		B10000000000000000000031 /* AnimalPhotoLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimalPhotoLoader.swift; sourceTree = "<group>"; };
 		B10000000000000000000040 /* AnimalNameGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimalNameGenerator.swift; sourceTree = "<group>"; };
+		B10000000000000000000041 /* EarTagReaderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarTagReaderService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -280,10 +284,12 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000026 /* SupabaseClientProvider.swift */,
+				B10000000000000000000041 /* EarTagReaderService.swift */,
 				B10000000000000000000027 /* AuthService.swift */,
 				B10000000000000000000028 /* RecognitionModels.swift */,
 				B10000000000000000000029 /* MultipartFormData.swift */,
 				B1000000000000000000002A /* ImageEncoding.swift */,
+				B10000000000000000000050 /* ScanDiagnostics.swift */,
 				B1000000000000000000002B /* RecognitionService.swift */,
 				B1000000000000000000002C /* CloudRunRecognitionService.swift */,
 				B1000000000000000000002D /* AnimalRepository.swift */,
@@ -434,6 +440,7 @@
 				A1000000000000000000002D /* CowDetectorService.swift in Sources */,
 				A1000000000000000000002E /* HerdData.swift in Sources */,
 				A10000000000000000000040 /* AnimalNameGenerator.swift in Sources */,
+				A10000000000000000000041 /* EarTagReaderService.swift in Sources */,
 				A1000000000000000000002F /* HomeView.swift in Sources */,
 				A10000000000000000000030 /* AnimalsView.swift in Sources */,
 				A10000000000000000000031 /* AddAnimalView.swift in Sources */,
@@ -445,6 +452,7 @@
 				A10000000000000000000037 /* RecognitionModels.swift in Sources */,
 				A10000000000000000000038 /* MultipartFormData.swift in Sources */,
 				A10000000000000000000039 /* ImageEncoding.swift in Sources */,
+				A10000000000000000000060 /* ScanDiagnostics.swift in Sources */,
 				A1000000000000000000003A /* RecognitionService.swift in Sources */,
 				A1000000000000000000003B /* CloudRunRecognitionService.swift in Sources */,
 				A1000000000000000000003C /* AnimalRepository.swift in Sources */,
